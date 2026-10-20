@@ -806,23 +806,23 @@ def deadline_info(deadline):
     """(testo, colore sfondo, colore testo, icona) del badge di scadenza."""
     d = to_date(deadline)
     if not d:
-        return ("Scadenza non indicata", ft.colors.SURFACE_VARIANT, ft.colors.ON_SURFACE_VARIANT,
-                ft.icons.SCHEDULE_ROUNDED)
+        return ("Scadenza non indicata", ft.Colors.SURFACE_CONTAINER_HIGHEST, ft.Colors.ON_SURFACE_VARIANT,
+                ft.Icons.SCHEDULE_ROUNDED)
     days = (d - date.today()).days
     if days < 0:
-        return (f"Scaduto il {fmt_short(d)}", ft.colors.SURFACE_VARIANT, ft.colors.OUTLINE,
-                ft.icons.EVENT_BUSY_ROUNDED)
+        return (f"Scaduto il {fmt_short(d)}", ft.Colors.SURFACE_CONTAINER_HIGHEST, ft.Colors.OUTLINE,
+                ft.Icons.EVENT_BUSY_ROUNDED)
     if days == 0:
-        return ("Scade oggi", ft.colors.ERROR_CONTAINER, ft.colors.ON_ERROR_CONTAINER,
-                ft.icons.TIMER_ROUNDED)
+        return ("Scade oggi", ft.Colors.ERROR_CONTAINER, ft.Colors.ON_ERROR_CONTAINER,
+                ft.Icons.TIMER_ROUNDED)
     if days == 1:
-        return ("Scade domani", ft.colors.ERROR_CONTAINER, ft.colors.ON_ERROR_CONTAINER,
-                ft.icons.TIMER_ROUNDED)
+        return ("Scade domani", ft.Colors.ERROR_CONTAINER, ft.Colors.ON_ERROR_CONTAINER,
+                ft.Icons.TIMER_ROUNDED)
     if days <= 3:
-        return (f"Scade tra {days} giorni", ft.colors.ERROR_CONTAINER, ft.colors.ON_ERROR_CONTAINER,
-                ft.icons.TIMER_ROUNDED)
-    return (f"Scade il {fmt_short(d)}", ft.colors.TERTIARY_CONTAINER, ft.colors.ON_TERTIARY_CONTAINER,
-            ft.icons.EVENT_AVAILABLE_ROUNDED)
+        return (f"Scade tra {days} giorni", ft.Colors.ERROR_CONTAINER, ft.Colors.ON_ERROR_CONTAINER,
+                ft.Icons.TIMER_ROUNDED)
+    return (f"Scade il {fmt_short(d)}", ft.Colors.TERTIARY_CONTAINER, ft.Colors.ON_TERTIARY_CONTAINER,
+            ft.Icons.EVENT_AVAILABLE_ROUNDED)
 
 
 def is_new(published):
@@ -877,7 +877,7 @@ def build_mailto(email, title, cdc, name, phone):
 # ----------------------------------------------------------------------------
 # Interfaccia
 # ----------------------------------------------------------------------------
-def main(page: ft.Page):
+def build(page: ft.Page, raw_prefs=None):
     try:
         page.title = "Interpelli Scuola"
         page.theme_mode = ft.ThemeMode.SYSTEM
@@ -886,8 +886,8 @@ def main(page: ft.Page):
         page.padding = 0
         page.spacing = 0
         try:
-            page.window_width = 420
-            page.window_height = 820
+            page.window.width = 420
+            page.window.height = 820
         except Exception:
             pass
 
@@ -899,9 +899,25 @@ def main(page: ft.Page):
         # ---- Preferenze dell'utente (classi di concorso, dati per le candidature)
         prefs = {"classes": [], "name": "", "phone": ""}
 
+        store = ft.SharedPreferences()
+
+        def show_dialog(d):
+            try:
+                page.show_dialog(d)
+            except RuntimeError:             # era già nella pila: la riapro
+                d.open = True
+                d.update()
+
+        def close_dialog(d):
+            d.open = False
+            try:
+                d.update()
+            except Exception:
+                page.update()
+
         def load_prefs():
             try:
-                raw = page.client_storage.get("prefs")
+                raw = raw_prefs
                 data = json.loads(raw) if isinstance(raw, str) else raw
                 if isinstance(data, dict):
                     classes = data.get("classes", [])
@@ -915,7 +931,7 @@ def main(page: ft.Page):
 
         def save_prefs():
             try:
-                page.client_storage.set("prefs", json.dumps(prefs))
+                page.run_task(store.set, "prefs", json.dumps(prefs))
             except Exception:
                 pass
 
@@ -926,42 +942,42 @@ def main(page: ft.Page):
         def tool_button(icon, tooltip, visible=True):
             return ft.IconButton(
                 icon=icon,
-                icon_color=ft.colors.ON_SURFACE_VARIANT,
+                icon_color=ft.Colors.ON_SURFACE_VARIANT,
                 icon_size=22,
                 tooltip=tooltip,
                 visible=visible,
-                style=ft.ButtonStyle(bgcolor=ft.colors.SURFACE_VARIANT),
+                style=ft.ButtonStyle(bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST),
             )
 
-        settings_button = tool_button(ft.icons.TUNE_ROUNDED, "Le mie classi e i miei dati")
-        refresh_button = tool_button(ft.icons.SYNC_ROUNDED, "Cerca nuovi interpelli")
-        reset_button = tool_button(ft.icons.FILTER_ALT_OFF_ROUNDED, "Azzera i filtri", visible=False)
+        settings_button = tool_button(ft.Icons.TUNE_ROUNDED, "Le mie classi e i miei dati")
+        refresh_button = tool_button(ft.Icons.SYNC_ROUNDED, "Cerca nuovi interpelli")
+        reset_button = tool_button(ft.Icons.FILTER_ALT_OFF_ROUNDED, "Azzera i filtri", visible=False)
 
-        clear_button = ft.IconButton(icon=ft.icons.CLOSE_ROUNDED, icon_size=18, visible=False,
+        clear_button = ft.IconButton(icon=ft.Icons.CLOSE_ROUNDED, icon_size=18, visible=False,
                                      icon_color="#6B7280")
 
         search_input = ft.TextField(
             hint_text="Cerca classe di concorso, ruolo, ufficio…",
             hint_style=ft.TextStyle(color="#6B7280", size=14),
             text_style=ft.TextStyle(color="#111827", size=14),
-            prefix_icon=ft.icons.SEARCH_ROUNDED,
+            prefix_icon=ft.Icons.SEARCH_ROUNDED,
             suffix=clear_button,
             filled=True,
-            fill_color=ft.colors.with_opacity(0.96, ft.colors.WHITE),
-            border=ft.InputBorder.NONE,
+            fill_color=ft.Colors.with_opacity(0.96, ft.Colors.WHITE),
+            border=ft.NoInputBorder(),
             border_radius=16,
-            content_padding=ft.padding.symmetric(horizontal=12, vertical=14),
+            content_padding=ft.Padding.symmetric(horizontal=12, vertical=14),
             cursor_color=BRAND_LIGHT,
         )
 
         header = ft.Container(
             gradient=ft.LinearGradient(
-                begin=ft.alignment.top_left,
-                end=ft.alignment.bottom_right,
+                begin=ft.Alignment.TOP_LEFT,
+                end=ft.Alignment.BOTTOM_RIGHT,
                 colors=[BRAND_DARK, BRAND_LIGHT],
             ),
-            padding=ft.padding.only(left=18, right=14, top=22, bottom=18),
-            border_radius=ft.border_radius.only(bottom_left=28, bottom_right=28),
+            padding=ft.Padding.only(left=18, right=14, top=22, bottom=18),
+            border_radius=ft.BorderRadius.only(bottom_left=28, bottom_right=28),
             content=ft.Column(
                 spacing=14,
                 controls=[
@@ -973,9 +989,9 @@ def main(page: ft.Page):
                                 expand=True, spacing=0,
                                 controls=[
                                     ft.Text("Interpelli Scuola", size=21, weight=ft.FontWeight.W_800,
-                                            color=ft.colors.WHITE),
+                                            color=ft.Colors.WHITE),
                                     ft.Text("Supplenze in tutta Italia, in un tocco",
-                                            size=12, color=ft.colors.with_opacity(0.85, ft.colors.WHITE)),
+                                            size=12, color=ft.Colors.with_opacity(0.85, ft.Colors.WHITE)),
                                 ],
                             ),
                         ],
@@ -991,8 +1007,8 @@ def main(page: ft.Page):
         # Pulsanti-filtro: stesso tipo di controllo (ElevatedButton) già usato
         # dalla versione originale, quindi sicuro su tutti i dispositivi.
         def make_pill(key, label, icon):
-            btn = ft.ElevatedButton(
-                text=label,
+            btn = ft.Button(
+                content=label,
                 icon=icon,
                 on_click=lambda e, k=key: set_profile(k),
             )
@@ -1004,9 +1020,9 @@ def main(page: ft.Page):
                 active = state["profile"] == key
                 btn.style = ft.ButtonStyle(
                     shape=ft.RoundedRectangleBorder(radius=20),
-                    bgcolor=ft.colors.PRIMARY if active else ft.colors.SURFACE_VARIANT,
-                    color=ft.colors.ON_PRIMARY if active else ft.colors.ON_SURFACE_VARIANT,
-                    padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                    bgcolor=ft.Colors.PRIMARY if active else ft.Colors.SURFACE_CONTAINER_HIGHEST,
+                    color=ft.Colors.ON_PRIMARY if active else ft.Colors.ON_SURFACE_VARIANT,
+                    padding=ft.Padding.symmetric(horizontal=12, vertical=8),
                     elevation=0,
                 )
 
@@ -1018,16 +1034,16 @@ def main(page: ft.Page):
                 make_pill("", "Tutti", None),
                 make_pill("DOCENTI", "Docenti", None),
                 make_pill("ATA", "ATA", None),
-                make_pill("ME", "Per me", ft.icons.STAR_ROUNDED),
+                make_pill("ME", "Per me", ft.Icons.STAR_ROUNDED),
                 settings_button,
                 refresh_button,
                 reset_button,
             ],
         )
 
-        region_options = [ft.dropdown.Option("", "Tutta Italia")]
+        region_options = [ft.DropdownOption(key="", text="Tutta Italia")]
         for reg in sorted(SOURCES.keys()):
-            region_options.append(ft.dropdown.Option(reg, reg))
+            region_options.append(ft.DropdownOption(key=reg, text=reg))
 
         # Stessa configurazione del Dropdown originale (che funzionava),
         # direttamente in colonna e a larghezza piena.
@@ -1037,27 +1053,27 @@ def main(page: ft.Page):
             value="",
             border_radius=14,
             filled=True,
-            border_color=ft.colors.TRANSPARENT,
+            border_color=ft.Colors.TRANSPARENT,
         )
 
         status_dropdown = ft.Dropdown(
             label="Stato",
             options=[
-                ft.dropdown.Option("", "Tutti gli stati"),
-                ft.dropdown.Option("active", "Attivi"),
-                ft.dropdown.Option("soon", f"In scadenza (entro {SOON_DAYS} giorni)"),
-                ft.dropdown.Option("expired", "Scaduti"),
+                ft.DropdownOption(key="", text="Tutti gli stati"),
+                ft.DropdownOption(key="active", text="Attivi"),
+                ft.DropdownOption(key="soon", text=f"In scadenza (entro {SOON_DAYS} giorni)"),
+                ft.DropdownOption(key="expired", text="Scaduti"),
             ],
             value="",
             border_radius=14,
             filled=True,
-            border_color=ft.colors.TRANSPARENT,
+            border_color=ft.Colors.TRANSPARENT,
         )
 
-        classes_text = ft.Text("", size=12, color=ft.colors.ON_SURFACE_VARIANT)
+        classes_text = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
 
         filters = ft.Container(
-            padding=ft.padding.only(left=16, right=16, top=14, bottom=4),
+            padding=ft.Padding.only(left=16, right=16, top=14, bottom=4),
             content=ft.Column(
                 spacing=10,
                 controls=[pills_row, classes_text, region_dropdown, status_dropdown],
@@ -1065,23 +1081,23 @@ def main(page: ft.Page):
         )
 
         # ---- Stato / progresso ---------------------------------------------
-        status_text = ft.Text("", size=12, color=ft.colors.ON_SURFACE_VARIANT, weight=ft.FontWeight.W_500,
+        status_text = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT, weight=ft.FontWeight.W_500,
                               expand=True)
         progress_bar = ft.ProgressBar(value=0, visible=False, bar_height=3, border_radius=3)
         status_row = ft.Container(
-            padding=ft.padding.symmetric(horizontal=18, vertical=6),
+            padding=ft.Padding.symmetric(horizontal=18, vertical=6),
             content=ft.Column(spacing=6, controls=[progress_bar, ft.Row([status_text])]),
         )
 
         # ---- Lista risultati -----------------------------------------------
         results = ft.ListView(expand=True, spacing=10,
-                              padding=ft.padding.only(left=16, right=16, top=4, bottom=28))
+                              padding=ft.Padding.only(left=16, right=16, top=4, bottom=28))
 
         more_button = ft.Container(
-            alignment=ft.alignment.center,
-            padding=ft.padding.only(top=6, bottom=6),
+            alignment=ft.Alignment.CENTER,
+            padding=ft.Padding.only(top=6, bottom=6),
             content=ft.FilledTonalButton(
-                text="Mostra altri", icon=ft.icons.EXPAND_MORE_ROUNDED,
+                content="Mostra altri", icon=ft.Icons.EXPAND_MORE_ROUNDED,
                 on_click=lambda e: load_results(reset=False),
             ),
         )
@@ -1089,8 +1105,8 @@ def main(page: ft.Page):
         def empty_state(db_empty):
             if state["refreshing"]:
                 return ft.Container(
-                    alignment=ft.alignment.center,
-                    padding=ft.padding.only(top=48, left=24, right=24),
+                    alignment=ft.Alignment.CENTER,
+                    padding=ft.Padding.only(top=48, left=24, right=24),
                     content=ft.Column(
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=14,
                         controls=[
@@ -1098,26 +1114,26 @@ def main(page: ft.Page):
                             ft.Text("Sto cercando gli interpelli…", size=16, weight=ft.FontWeight.W_700,
                                     text_align=ft.TextAlign.CENTER),
                             ft.Text("I risultati compaiono qui man mano che li trovo.", size=13,
-                                    color=ft.colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER),
+                                    color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER),
                         ],
                     ),
                 )
             if db_empty:
                 title, sub = "Nessun interpello scaricato", "Tocca il pulsante per scaricare gli avvisi di tutta Italia."
-                action = ft.FilledButton("Scarica interpelli", icon=ft.icons.CLOUD_DOWNLOAD_ROUNDED,
+                action = ft.FilledButton("Scarica interpelli", icon=ft.Icons.CLOUD_DOWNLOAD_ROUNDED,
                                          on_click=lambda e: refresh())
             else:
                 title, sub = "Nessun risultato", "Prova a cambiare ricerca o filtri."
                 action = ft.TextButton("Azzera filtri", on_click=lambda e: reset_filters())
             return ft.Container(
-                alignment=ft.alignment.center,
-                padding=ft.padding.only(top=48, left=24, right=24),
+                alignment=ft.Alignment.CENTER,
+                padding=ft.Padding.only(top=48, left=24, right=24),
                 content=ft.Column(
                     horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10,
                     controls=[
-                        ft.Icon(ft.icons.SEARCH_OFF_ROUNDED, size=56, color=ft.colors.OUTLINE),
+                        ft.Icon(ft.Icons.SEARCH_OFF_ROUNDED, size=56, color=ft.Colors.OUTLINE),
                         ft.Text(title, size=16, weight=ft.FontWeight.W_700, text_align=ft.TextAlign.CENTER),
-                        ft.Text(sub, size=13, color=ft.colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER),
+                        ft.Text(sub, size=13, color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER),
                         action,
                     ],
                 ),
@@ -1131,7 +1147,7 @@ def main(page: ft.Page):
             return ft.Container(
                 content=ft.Row(row, spacing=4, tight=True),
                 bgcolor=bgcolor,
-                padding=ft.padding.symmetric(horizontal=9, vertical=4),
+                padding=ft.Padding.symmetric(horizontal=9, vertical=4),
                 border_radius=8,
             )
 
@@ -1139,15 +1155,17 @@ def main(page: ft.Page):
             return ft.Row(
                 spacing=6, vertical_alignment=ft.CrossAxisAlignment.START,
                 controls=[
-                    ft.Icon(icon, size=14, color=ft.colors.OUTLINE),
-                    ft.Text(text, size=12, color=ft.colors.ON_SURFACE_VARIANT, expand=True,
+                    ft.Icon(icon, size=14, color=ft.Colors.OUTLINE),
+                    ft.Text(text, size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
                             max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
                 ],
             )
 
+        launcher = ft.UrlLauncher()
+
         def open_url(url):
             try:
-                page.launch_url(url)
+                page.run_task(launcher.launch_url, url)
             except Exception:
                 pass
 
@@ -1160,29 +1178,29 @@ def main(page: ft.Page):
 
             chips = [
                 badge("ATA" if is_ata else "Docenti",
-                      ft.colors.SECONDARY_CONTAINER if is_ata else ft.colors.PRIMARY_CONTAINER,
-                      ft.colors.ON_SECONDARY_CONTAINER if is_ata else ft.colors.ON_PRIMARY_CONTAINER,
-                      ft.icons.WORK_ROUNDED if is_ata else ft.icons.SCHOOL_ROUNDED),
+                      ft.Colors.SECONDARY_CONTAINER if is_ata else ft.Colors.PRIMARY_CONTAINER,
+                      ft.Colors.ON_SECONDARY_CONTAINER if is_ata else ft.Colors.ON_PRIMARY_CONTAINER,
+                      ft.Icons.WORK_ROUNDED if is_ata else ft.Icons.SCHOOL_ROUNDED),
             ]
             for code in [c.strip() for c in (cdc or "").split(",") if c.strip()]:
-                chips.append(badge(cdc_label(code), ft.colors.SURFACE_VARIANT, ft.colors.ON_SURFACE_VARIANT))
+                chips.append(badge(cdc_label(code), ft.Colors.SURFACE_CONTAINER_HIGHEST, ft.Colors.ON_SURFACE_VARIANT))
             if mine:
-                chips.append(badge("PER TE", GOLD, "#3B2A00", ft.icons.STAR_ROUNDED))
+                chips.append(badge("PER TE", GOLD, "#3B2A00", ft.Icons.STAR_ROUNDED))
             if is_new(published):
-                chips.append(badge("NUOVO", GREEN, ft.colors.WHITE))
+                chips.append(badge("NUOVO", GREEN, ft.Colors.WHITE))
             if verified:
-                chips.append(badge("Date verificate", ft.colors.SURFACE_VARIANT, GREEN, ft.icons.VERIFIED_ROUNDED))
+                chips.append(badge("Date verificate", ft.Colors.SURFACE_CONTAINER_HIGHEST, GREEN, ft.Icons.VERIFIED_ROUNDED))
 
             body = [
                 ft.Row(chips, spacing=6, wrap=True, run_spacing=6),
                 ft.Text(title, size=14, weight=ft.FontWeight.W_600, max_lines=4,
                         overflow=ft.TextOverflow.ELLIPSIS),
-                meta_row(ft.icons.PLACE_ROUNDED, f"{source} · {region}"),
-                meta_row(ft.icons.CALENDAR_TODAY_ROUNDED,
+                meta_row(ft.Icons.PLACE_ROUNDED, f"{source} · {region}"),
+                meta_row(ft.Icons.CALENDAR_TODAY_ROUNDED,
                          f"Pubblicato il {fmt_date(published)}" if published else "Data di pubblicazione non indicata"),
             ]
             if post_type and post_type != "Non specificato":
-                body.append(meta_row(ft.icons.WORK_OUTLINE_ROUNDED, post_type))
+                body.append(meta_row(ft.Icons.WORK_OUTLINE_ROUNDED, post_type))
             body.append(
                 ft.Row(
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -1193,8 +1211,8 @@ def main(page: ft.Page):
                             spacing=2, tight=True,
                             controls=[
                                 ft.Text("Controlla e apri", size=12, weight=ft.FontWeight.W_700,
-                                        color=ft.colors.PRIMARY),
-                                ft.Icon(ft.icons.OPEN_IN_NEW_ROUNDED, size=15, color=ft.colors.PRIMARY),
+                                        color=ft.Colors.PRIMARY),
+                                ft.Icon(ft.Icons.OPEN_IN_NEW_ROUNDED, size=15, color=ft.Colors.PRIMARY),
                             ],
                         ),
                     ],
@@ -1204,10 +1222,10 @@ def main(page: ft.Page):
             # Azioni come sul sito: documento originale e candidatura via email
             actions = []
             if doc_url:
-                actions.append(ft.TextButton(text="Documento", icon=ft.icons.DOWNLOAD_ROUNDED, url=doc_url))
+                actions.append(ft.TextButton(content="Documento", icon=ft.Icons.DOWNLOAD_ROUNDED, url=doc_url))
             if email and status != "expired":
                 mailto = build_mailto(email, title, cdc, prefs["name"] or "Candidato", prefs["phone"])
-                actions.append(ft.TextButton(text="Candidati", icon=ft.icons.MAIL_OUTLINE_ROUNDED, url=mailto))
+                actions.append(ft.TextButton(content="Candidati", icon=ft.Icons.MAIL_OUTLINE_ROUNDED, url=mailto))
             if actions:
                 body.append(ft.Row(actions, spacing=4, wrap=True))
 
@@ -1215,8 +1233,8 @@ def main(page: ft.Page):
                 content=ft.Column(body, spacing=8),
                 padding=14,
                 border_radius=18,
-                bgcolor=ft.colors.SURFACE_VARIANT,
-                border=ft.border.all(1.5, STATUS_COLORS[status]) if status in ("active", "soon") else None,
+                bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+                border=ft.Border.all(1.5, STATUS_COLORS[status]) if status in ("active", "soon") else None,
                 opacity=0.7 if status == "expired" else 1,
                 ink=True,
                 data=url,
@@ -1227,7 +1245,7 @@ def main(page: ft.Page):
         detail_title = ft.Text("", size=15, weight=ft.FontWeight.W_700, max_lines=4,
                                overflow=ft.TextOverflow.ELLIPSIS)
         detail_body = ft.Column(tight=True, spacing=10)
-        detail_open_btn = ft.FilledButton("Apri avviso", icon=ft.icons.OPEN_IN_NEW_ROUNDED)
+        detail_open_btn = ft.FilledButton("Apri avviso", icon=ft.Icons.OPEN_IN_NEW_ROUNDED)
         detail_close_btn = ft.TextButton("Chiudi")
         detail_dlg = ft.AlertDialog(
             modal=True,
@@ -1237,8 +1255,7 @@ def main(page: ft.Page):
         )
 
         def close_detail(e=None):
-            detail_dlg.open = False
-            page.update()
+            close_dialog(detail_dlg)
 
         def go_to_notice(url):
             close_detail()
@@ -1249,13 +1266,13 @@ def main(page: ft.Page):
         def date_line(icon, label, value_text, note, color=None):
             col = [ft.Text(value_text, size=14, weight=ft.FontWeight.W_700, color=color)]
             if note:
-                col.append(ft.Text(note, size=11, color=ft.colors.ON_SURFACE_VARIANT, italic=True))
+                col.append(ft.Text(note, size=11, color=ft.Colors.ON_SURFACE_VARIANT, italic=True))
             return ft.Row(
                 spacing=10, vertical_alignment=ft.CrossAxisAlignment.START,
                 controls=[
-                    ft.Icon(icon, size=20, color=ft.colors.PRIMARY),
+                    ft.Icon(icon, size=20, color=ft.Colors.PRIMARY),
                     ft.Column(spacing=1, tight=True, expand=True,
-                              controls=[ft.Text(label, size=11, color=ft.colors.ON_SURFACE_VARIANT)] + col),
+                              controls=[ft.Text(label, size=11, color=ft.Colors.ON_SURFACE_VARIANT)] + col),
                 ],
             )
 
@@ -1279,24 +1296,24 @@ def main(page: ft.Page):
         def show_verification(url, row_title, stored_pub, stored_deadline, info, stored_target=None, stored_cdc=None):
             if info is None:
                 detail_body.controls = [
-                    date_line(ft.icons.CALENDAR_TODAY_ROUNDED, "Pubblicazione",
+                    date_line(ft.Icons.CALENDAR_TODAY_ROUNDED, "Pubblicazione",
                               fmt_date(stored_pub) if stored_pub else "Non indicata",
                               "Non verificata: la pagina non risponde"),
-                    date_line(ft.icons.EVENT_BUSY_ROUNDED, "Scadenza",
+                    date_line(ft.Icons.EVENT_BUSY_ROUNDED, "Scadenza",
                               fmt_date(stored_deadline) if stored_deadline else "Non indicata",
                               "Non verificata: la pagina non risponde"),
                     ft.Text("Controlla la connessione e riprova, oppure apri l'avviso e verifica le date.",
-                            size=12, color=ft.colors.ON_SURFACE_VARIANT),
+                            size=12, color=ft.Colors.ON_SURFACE_VARIANT),
                 ]
                 return
 
             pub, deadline = info["published"], info["deadline"]
             d_text, _, _, _ = deadline_info(deadline)
             lines = [
-                date_line(ft.icons.CALENDAR_TODAY_ROUNDED, "Data di pubblicazione",
+                date_line(ft.Icons.CALENDAR_TODAY_ROUNDED, "Data di pubblicazione",
                           fmt_date(pub) if pub else "Non trovata nella pagina",
                           f"Letta da: {info['published_src']}" if pub else "Controllala nell'avviso"),
-                date_line(ft.icons.EVENT_BUSY_ROUNDED, "Scadenza per la candidatura",
+                date_line(ft.Icons.EVENT_BUSY_ROUNDED, "Scadenza per la candidatura",
                           fmt_date(deadline) if deadline else "Non trovata nella pagina",
                           f"«…{info['deadline_src']}…»" if deadline else
                           "Potrebbe essere scritta solo nell'allegato: aprilo per controllare",
@@ -1312,11 +1329,11 @@ def main(page: ft.Page):
             if stored_target and stored_target != info.get("target"):
                 was = "Personale ATA" if stored_target == "ATA" else "Docenti"
                 note = f"Corretto: nell'elenco risultava «{was}»"
-            lines.append(date_line(ft.icons.BADGE_ROUNDED, "Profilo e classe di concorso",
+            lines.append(date_line(ft.Icons.BADGE_ROUNDED, "Profilo e classe di concorso",
                                    profile + (f" · {cdc_txt}" if cdc_txt else ""), note))
             if info.get("doc_url"):
                 lines.append(ft.Text("Nell'avviso è presente un allegato: se la scadenza è indicata solo lì, "
-                                     "controllala nel documento.", size=11, color=ft.colors.ON_SURFACE_VARIANT))
+                                     "controllala nel documento.", size=11, color=ft.Colors.ON_SURFACE_VARIANT))
             detail_body.controls = lines
 
         def open_interpello(url):
@@ -1337,9 +1354,7 @@ def main(page: ft.Page):
                 ])
             ]
             detail_open_btn.on_click = lambda e, u=url: go_to_notice(u)
-            page.dialog = detail_dlg
-            detail_dlg.open = True
-            page.update()
+            show_dialog(detail_dlg)
 
             def worker():
                 info = verify_interpello(url, stored_pub or None, row_title)
@@ -1469,7 +1484,7 @@ def main(page: ft.Page):
                             status_text.value = ""
                     if reset and not live:
                         try:
-                            results.scroll_to(offset=0, duration=0)
+                            page.run_task(results.scroll_to, offset=0, duration=0)
                         except Exception:
                             pass
                     update_reset_visibility()
@@ -1514,14 +1529,15 @@ def main(page: ft.Page):
         classes_field = ft.TextField(
             label="Classi di concorso",
             hint_text="es. A028, A022, ADSS",
-            helper_text="Separale con virgole o spazi",
+            helper="Separale con virgole o spazi",
         )
         name_field = ft.TextField(label="Nome e cognome (per le candidature)")
         phone_field = ft.TextField(label="Telefono (facoltativo)")
 
         def close_settings(e=None):
-            dlg.open = False
-            page.update()
+            close_dialog(dlg)
+
+        clipboard = ft.Clipboard()
 
         def copy_classes():
             text = ", ".join(parse_classes(classes_field.value))
@@ -1529,7 +1545,7 @@ def main(page: ft.Page):
                 notify("Scrivi prima almeno una classe di concorso.")
                 return
             try:
-                page.set_clipboard(text)
+                page.run_task(clipboard.set, text)
                 notify(f"Copiato: {text}")
             except Exception:
                 notify("Copia non riuscita: seleziona e copia il testo a mano.")
@@ -1543,8 +1559,7 @@ def main(page: ft.Page):
             if state["profile"] == "ME" and not prefs["classes"]:
                 state["profile"] = ""
                 paint_pills()
-            dlg.open = False
-            page.update()
+            close_dialog(dlg)
             load_results(reset=True)
 
         dlg = ft.AlertDialog(
@@ -1554,13 +1569,13 @@ def main(page: ft.Page):
                 tight=True, spacing=12,
                 controls=[
                     ft.Text("Servono al filtro «Per me» e alle notifiche: ricevi un avviso solo per i nuovi "
-                            "interpelli di queste classi.", size=12, color=ft.colors.ON_SURFACE_VARIANT),
+                            "interpelli di queste classi.", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
                     classes_field, name_field, phone_field,
-                    ft.TextButton("Copia le classi per le notifiche", icon=ft.icons.CONTENT_COPY_ROUNDED,
+                    ft.TextButton("Copia le classi per le notifiche", icon=ft.Icons.CONTENT_COPY_ROUNDED,
                                   on_click=lambda e: copy_classes()),
                     ft.Text("Per le notifiche a app chiusa incolla l'elenco nella variabile NOTIFY_CLASSES "
                             "del repository GitHub (vedi NOTIFICHE.md).", size=11,
-                            color=ft.colors.ON_SURFACE_VARIANT),
+                            color=ft.Colors.ON_SURFACE_VARIANT),
                 ],
             ),
             actions=[ft.TextButton("Annulla", on_click=close_settings),
@@ -1571,9 +1586,7 @@ def main(page: ft.Page):
             classes_field.value = ", ".join(prefs["classes"])
             name_field.value = prefs["name"]
             phone_field.value = prefs["phone"]
-            page.dialog = dlg
-            dlg.open = True
-            page.update()
+            show_dialog(dlg)
 
         settings_button.on_click = open_settings
 
@@ -1602,15 +1615,13 @@ def main(page: ft.Page):
 
         search_input.on_change = on_search_change
         clear_button.on_click = on_clear
-        region_dropdown.on_change = on_region
-        status_dropdown.on_change = on_status
+        region_dropdown.on_select = on_region
+        status_dropdown.on_select = on_status
 
         # ---- Aggiornamento fonti -------------------------------------------
         def notify(message):
             try:
-                page.snack_bar = ft.SnackBar(ft.Text(message), behavior=ft.SnackBarBehavior.FLOATING)
-                page.snack_bar.open = True
-                page.update()
+                page.show_dialog(ft.SnackBar(content=ft.Text(message), behavior=ft.SnackBarBehavior.FLOATING))
             except Exception:
                 pass
 
@@ -1738,5 +1749,14 @@ def main(page: ft.Page):
         raise
 
 
+async def main(page: ft.Page):
+    raw = None
+    try:
+        raw = await ft.SharedPreferences().get("prefs")
+    except Exception:
+        pass
+    build(page, raw)
+
+
 if __name__ == "__main__":
-    ft.app(target=main, assets_dir="assets")
+    ft.run(main, assets_dir="assets")
