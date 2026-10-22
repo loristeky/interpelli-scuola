@@ -30,6 +30,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install flet==1.0.4
 
+      - name: Accetta le licenze Android
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
       - name: Build APK
         run: flet build apk --yes --no-rich-output --verbose
 
