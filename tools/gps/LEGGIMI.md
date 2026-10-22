@@ -27,3 +27,17 @@ dice se non trova righe; in quel caso mandami il PDF e adatto il lettore.
 - Le nomine dipendono dai posti: una provincia con tante nomine offre più occasioni.
 - Con poche nomine (1–2) la soglia è poco significativa: nell'app compare il numero di nomine.
 - Fascia I e II hanno punteggi non confrontabili e sono tenute separate.
+
+## Riserva servizio civile (15%)
+La riserva copre **al massimo il 15% dei posti di quel turno, per classe di concorso**: l'algoritmo
+scorre la graduatoria per punteggio e «salta» ai riservisti solo finché la quota non è raggiunta.
+I bollettini non dicono chi sono i riservisti (colonne oscurate), quindi l'app mostra due soglie:
+
+- **sicura**: punteggio dell'ultimo nominato dopo aver tolto il 15% dei punteggi più bassi (arrotondato
+  per difetto, quindi con meno di 7 nomine non toglie nulla). Se il tuo punteggio la raggiunge, ci
+  saresti anche con la quota piena → «Ci saresti».
+- **minima**: punteggio dell'ultimo nominato in assoluto. Se la raggiungi ma non arrivi alla sicura →
+  «Forse: dipende dalla riserva».
+
+La percentuale è `GPS_RISERVA` in `main.py`. Ogni bollettino è un turno: per questo non vanno uniti
+bollettini di turni diversi della stessa provincia (i PDF dello stesso turno, per esempio allegati A e B, sì).

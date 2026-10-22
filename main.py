@@ -875,6 +875,12 @@ def matches_classes(title, cdc, classes):
 # n = nomine, min/max = punteggio più basso/più alto nominato, pos = posizione più bassa raggiunta.
 GPS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "gps_data.json")
 GPS_FASCE = {"I": "I fascia", "II": "II fascia"}
+# Riserva per chi ha fatto il servizio civile: al massimo il 15% dei posti di quel turno, per classe.
+# L'algoritmo scorre la graduatoria e «salta» ai riservisti solo finché la quota non è raggiunta, quindi i
+# nominati con la riserva sono al massimo il 15% e hanno i punteggi più bassi. Nei bollettini non si capisce
+# chi sono (colonne oscurate): la soglia vera sta tra il punteggio dell'ultimo nominato (minima) e quello
+# che resta togliendo il 15% dei punteggi più bassi (sicura).
+GPS_RISERVA = 0.15
 
 
 def load_gps_data(path=GPS_FILE):
@@ -902,10 +908,26 @@ def fmt_score(value):
     return f"{value:g}".replace(".", ",")
 
 
-def gps_rank(data, cdc, fascia, score, region=""):
+def gps_threshold(entry, riserva=0.0):
+    """(soglia, posizione, nomine, escluse, minima).
+    soglia = punteggio dell'ultimo nominato dopo aver tolto al massimo la quota riservata (i punteggi più bassi);
+    minima = punteggio dell'ultimo nominato in assoluto. Senza elenco dei punteggi soglia = minima."""
+    n = int(entry["n"])
+    minima = float(entry["min"])
+    scores = entry.get("s")
+    if not scores or riserva <= 0:
+        return minima, int(entry.get("pos", 0)), n, 0, minima
+    skip = int(n * riserva)                         # quota riservata, arrotondata per difetto
+    ordered = sorted(scores, key=lambda x: (-x[0], x[1]))
+    kept = ordered[:max(1, len(ordered) - skip)]
+    last = kept[-1]
+    return float(last[0]), int(last[1]), n, len(ordered) - len(kept), minima
+
+
+def gps_rank(data, cdc, fascia, score, region="", riserva=0.0):
     """Confronta il punteggio con quello dell'ultimo nominato di ogni provincia.
-    Prima le province in cui saresti stato nominato (margine maggiore per prime), poi le altre
-    (le più vicine per prime)."""
+    esito: "si" (ci saresti anche con la riserva piena), "forse" (dipende da quanti riservisti sono entrati),
+    "no". Prima i "si" (margine maggiore per primi), poi i "forse", poi i "no" (i più vicini per primi)."""
     key = f"{(cdc or '').strip().upper()}:{fascia}"
     rows = []
     for prov, info in data.get("province", {}).items():
@@ -915,11 +937,15 @@ def gps_rank(data, cdc, fascia, score, region=""):
         entry = info.get("classi", {}).get(key)
         if not entry or not entry.get("n"):
             continue
-        margin = round(score - float(entry["min"]), 3)
-        rows.append({"provincia": prov, "regione": reg, "soglia": float(entry["min"]),
-                     "massimo": float(entry["max"]), "nomine": int(entry["n"]),
-                     "ultima": int(entry.get("pos", 0)), "margine": margin, "ok": margin >= 0})
-    rows.sort(key=lambda r: (not r["ok"], -r["margine"], -r["nomine"], r["provincia"]))
+        soglia, ultima, n, escluse, minima = gps_threshold(entry, riserva)
+        margin = round(score - soglia, 3)
+        esito = "si" if margin >= 0 else ("forse" if score >= minima else "no")
+        rows.append({"provincia": prov, "regione": reg, "soglia": soglia, "minima": minima,
+                     "massimo": float(entry["max"]), "nomine": n, "escluse": escluse, "ultima": ultima,
+                     "margine": margin, "mancano": round(max(0.0, minima - score), 3),
+                     "esito": esito, "ok": esito == "si"})
+    order = {"si": 0, "forse": 1, "no": 2}
+    rows.sort(key=lambda r: (order[r["esito"]], -r["margine"], -r["nomine"], r["provincia"]))
     return rows
 
 
@@ -1697,14 +1723,17 @@ def build(page: ft.Page, raw_prefs=None):
             options=[ft.DropdownOption(key="", text="Tutta Italia")]
                     + [ft.DropdownOption(key=r, text=r) for r in sorted(SOURCES.keys())],
         )
+        gps_riserva = ft.Switch(label="Considera la riserva del 15%", value=True)
         gps_info = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
         gps_results = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO, height=220)
 
         def gps_row(i, r):
-            good = r["ok"]
-            color = ft.Colors.PRIMARY if good else ft.Colors.ERROR
-            verdict = (f"Ci saresti: +{fmt_score(r['margine'])} punti" if good
-                       else f"Ti mancano {fmt_score(-r['margine'])} punti")
+            if r["esito"] == "si":
+                color, verdict = ft.Colors.PRIMARY, f"Ci saresti: +{fmt_score(r['margine'])} punti"
+            elif r["esito"] == "forse":
+                color, verdict = ft.Colors.TERTIARY, "Forse: dipende dalla riserva"
+            else:
+                color, verdict = ft.Colors.ERROR, f"Ti mancano {fmt_score(r['mancano'])} punti"
             return ft.Container(
                 padding=ft.Padding.symmetric(horizontal=12, vertical=8),
                 border_radius=12,
@@ -1719,7 +1748,9 @@ def build(page: ft.Page, raw_prefs=None):
                         ]),
                         ft.Column(spacing=0, horizontal_alignment=ft.CrossAxisAlignment.END, controls=[
                             ft.Text(verdict, size=12, weight=ft.FontWeight.W_700, color=color),
-                            ft.Text(f"ultimo nominato: {fmt_score(r['soglia'])} (posiz. {r['ultima']})", size=11,
+                            ft.Text((f"ultimo nominato: {fmt_score(r['soglia'])}, con riserva piena {fmt_score(r['minima'])}"
+                                     if r["escluse"] else f"ultimo nominato: {fmt_score(r['soglia'])}")
+                                    + f" (posiz. {r['ultima']})", size=11,
                                     color=ft.Colors.ON_SURFACE_VARIANT),
                         ]),
                     ],
@@ -1738,15 +1769,17 @@ def build(page: ft.Page, raw_prefs=None):
                 prefs["gps_class"], prefs["gps_score"] = cls, score
                 save_prefs()
                 fascia = gps_fascia.value or "II"
-                rows = gps_rank(gps_data, cls, fascia, num, gps_region.value or "")
+                rows = gps_rank(gps_data, cls, fascia, num, gps_region.value or "",
+                                riserva=GPS_RISERVA if gps_riserva.value else 0.0)
                 if not rows:
                     gps_info.value = (f"Nessuna nomina trovata per {cls} ({GPS_FASCE.get(fascia, '')}) nelle province "
                                       "con dati. Controlla la sigla della classe o cambia fascia.")
                 else:
                     gps_results.controls = [gps_row(i, r) for i, r in enumerate(rows[:40], 1)]
-                    yes = sum(1 for r in rows if r["ok"])
+                    yes = sum(1 for r in rows if r["esito"] == "si")
+                    maybe = sum(1 for r in rows if r["esito"] == "forse")
                     gps_info.value = (f"Con {fmt_score(num)} punti, classe {cls}, {GPS_FASCE.get(fascia, '')}: "
-                                      f"avresti ottenuto una nomina in {yes} province su {len(rows)} con dati. "
+                                      f"nomina sicura in {yes} province, possibile in altre {maybe} (su {len(rows)} con dati). "
                                       f"Bollettino n. {gps_data.get('bollettino', '?')} {gps_data.get('anno', '')}, "
                                       f"aggiornato al {gps_data.get('aggiornato', '?')}.")
             page.update()
@@ -1765,12 +1798,16 @@ def build(page: ft.Page, raw_prefs=None):
                 controls=[
                     ft.Text("Inserisci classe, fascia e punteggio: l'app lo confronta con l'ultimo nominato dei "
                             "bollettini di nomina di ogni provincia.", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                    gps_class_field, gps_fascia, gps_score_field, gps_region, gps_hint,
+                    gps_class_field, gps_fascia, gps_score_field, gps_region, gps_riserva, gps_hint,
                     gps_calc_button, gps_no_data, gps_info, gps_results,
                     ft.TextButton(content="Calcola su punteggiogps.it", icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
                                   on_click=lambda e: gps_open(GPS_TOOL_URL)),
                     ft.TextButton(content="Graduatorie GPS di ogni provincia", icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
                                   on_click=lambda e: gps_open(GPS_LISTS_URL)),
+                    ft.Text("Riserva servizio civile: fino al 15% dei posti di ogni turno e classe. I bollettini non dicono "
+                            "chi sono, quindi «sicura» vale anche con la quota piena (tolgo il 15% dei punteggi più "
+                            "bassi); «forse» se il tuo punteggio basta solo se i riservisti sono stati meno.",
+                            size=11, color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Text("Solo le province con bollettini già caricati. Nei bollettini successivi si scende più in "
                             "basso, quindi è una stima prudente. Fa fede l'Ufficio Scolastico della provincia.",
                             size=11, color=ft.Colors.ON_SURFACE_VARIANT),

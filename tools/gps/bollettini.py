@@ -130,15 +130,21 @@ def read_pdf(path):
 
 def aggregate(rows_by_sigla):
     """rows_by_sigla: {sigla: [(classe, fascia, pos, punteggio), ...]}.
-    Raggruppa per provincia/classe/fascia: n nomine, punteggio minimo e massimo, posizione più bassa."""
+    Per provincia/classe/fascia salva: n nomine, punteggio minimo e massimo, posizione più bassa e
+    l'elenco "s" dei nominati come [punteggio, posizione] in ordine di punteggio decrescente
+    (nessun nome: serve a escludere la quota riservata, vedi main.py)."""
     provinces = {}
     for sigla, rows in rows_by_sigla.items():
         prov, reg = SIGLE[sigla]
         entry = provinces.setdefault(prov, {"regione": reg, "classi": {}})
         for cdc, fascia, pos, score in rows:
-            e = entry["classi"].setdefault(f"{cdc}:{fascia}", {"n": 0, "min": score, "max": score, "pos": pos})
+            e = entry["classi"].setdefault(f"{cdc}:{fascia}", {"n": 0, "min": score, "max": score, "pos": pos, "s": []})
             e["n"] += 1
             e["min"] = min(e["min"], score)
             e["max"] = max(e["max"], score)
             e["pos"] = max(e["pos"], pos)
+            e["s"].append([score, pos])
+    for entry in provinces.values():
+        for e in entry["classi"].values():
+            e["s"].sort(key=lambda x: (-x[0], x[1]))
     return provinces
