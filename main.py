@@ -150,6 +150,8 @@ SOURCES = {
 MAX_WORKERS = 15
 PAGE_SIZE = 25          # interpelli mostrati per "blocco"
 DB_VERSION = 6          # alzare per forzare il rifacimento della cache
+GPS_TOOL_URL = "https://punteggiogps.it/"
+GPS_LISTS_URL = "https://www.orizzontescuola.it/gps-docenti-2026-27-ecco-le-prime-graduatorie-in-aggiornamento/"
 SOON_DAYS = 3           # "in scadenza" = scade entro questi giorni
 
 MESI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"]
@@ -862,6 +864,65 @@ def matches_classes(title, cdc, classes):
     return any(c in codes or re.search(rf"\b{re.escape(c)}\b", t) for c in classes)
 
 
+# ----------------------------------------------------------------------------
+# «Dove mi conviene fare le GPS?»: confronto con i bollettini di nomina
+# ----------------------------------------------------------------------------
+# I dati stanno in assets/gps_data.json (creato con tools/gps/build_gps_data.py dai bollettini di nomina
+# GPS pubblicati dagli Uffici scolastici) e contengono SOLO dati aggregati, mai nomi. Formato:
+#   {"anno": "2026/27", "aggiornato": "2026-08-29", "bollettino": "1", "fonte": "...",
+#    "province": {"Pescara": {"regione": "Abruzzo",
+#        "classi": {"A011:I": {"n": 12, "min": 107.5, "max": 197.5, "pos": 24}}}}}
+# n = nomine, min/max = punteggio più basso/più alto nominato, pos = posizione più bassa raggiunta.
+GPS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "gps_data.json")
+GPS_FASCE = {"I": "I fascia", "II": "II fascia"}
+
+
+def load_gps_data(path=GPS_FILE):
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and isinstance(data.get("province"), dict) and data["province"]:
+            return data
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def parse_score(text):
+    """'85,5' o '85.5' -> 85.5; None se non è un punteggio plausibile."""
+    try:
+        value = float(str(text).strip().replace(",", "."))
+    except ValueError:
+        return None
+    return value if 0 <= value <= 1000 else None
+
+
+def fmt_score(value):
+    """107.5 -> '107,5'; 98.0 -> '98'."""
+    return f"{value:g}".replace(".", ",")
+
+
+def gps_rank(data, cdc, fascia, score, region=""):
+    """Confronta il punteggio con quello dell'ultimo nominato di ogni provincia.
+    Prima le province in cui saresti stato nominato (margine maggiore per prime), poi le altre
+    (le più vicine per prime)."""
+    key = f"{(cdc or '').strip().upper()}:{fascia}"
+    rows = []
+    for prov, info in data.get("province", {}).items():
+        reg = info.get("regione", "")
+        if region and reg != region:
+            continue
+        entry = info.get("classi", {}).get(key)
+        if not entry or not entry.get("n"):
+            continue
+        margin = round(score - float(entry["min"]), 3)
+        rows.append({"provincia": prov, "regione": reg, "soglia": float(entry["min"]),
+                     "massimo": float(entry["max"]), "nomine": int(entry["n"]),
+                     "ultima": int(entry.get("pos", 0)), "margine": margin, "ok": margin >= 0})
+    rows.sort(key=lambda r: (not r["ok"], -r["margine"], -r["nomine"], r["provincia"]))
+    return rows
+
+
 def build_mailto(email, title, cdc, name, phone):
     from urllib.parse import quote
     subject = f"Disponibilità supplenza {('classe ' + cdc) if cdc else ''} - {name}".replace("  ", " ").strip(" -")
@@ -897,7 +958,7 @@ def build(page: ft.Page, raw_prefs=None):
         timers = {"search": None}
 
         # ---- Preferenze dell'utente (classi di concorso, dati per le candidature)
-        prefs = {"classes": [], "name": "", "phone": ""}
+        prefs = {"classes": [], "name": "", "phone": "", "gps_class": "", "gps_score": ""}
 
         store = ft.SharedPreferences()
 
@@ -923,7 +984,7 @@ def build(page: ft.Page, raw_prefs=None):
                     classes = data.get("classes", [])
                     if isinstance(classes, list):
                         prefs["classes"] = [c for c in classes if isinstance(c, str)]
-                    for key in ("name", "phone"):
+                    for key in ("name", "phone", "gps_class", "gps_score"):
                         if isinstance(data.get(key), str):
                             prefs[key] = data[key]
             except Exception:
@@ -1072,11 +1133,16 @@ def build(page: ft.Page, raw_prefs=None):
 
         classes_text = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
 
+        gps_button = ft.FilledTonalButton(
+            content="Dove mi conviene fare le GPS?",
+            icon=ft.Icons.TRAVEL_EXPLORE_ROUNDED,
+        )
+
         filters = ft.Container(
             padding=ft.Padding.only(left=16, right=16, top=14, bottom=4),
             content=ft.Column(
                 spacing=10,
-                controls=[pills_row, classes_text, region_dropdown, status_dropdown],
+                controls=[pills_row, classes_text, region_dropdown, status_dropdown, gps_button],
             ),
         )
 
@@ -1589,6 +1655,140 @@ def build(page: ft.Page, raw_prefs=None):
             show_dialog(dlg)
 
         settings_button.on_click = open_settings
+
+        # ---- «Dove mi conviene fare le GPS?» ---------------------------------
+        gps_class_field = ft.TextField(label="Classe di concorso", hint_text="es. A028", max_length=6,
+                                       capitalization=ft.TextCapitalization.CHARACTERS)
+        gps_score_field = ft.TextField(label="Il tuo punteggio GPS", hint_text="es. 42,5",
+                                       keyboard_type=ft.KeyboardType.NUMBER)
+        gps_hint = ft.Text("", size=12, color=ft.Colors.ERROR)
+
+        def gps_values():
+            cls = (gps_class_field.value or "").strip().upper()
+            score = (gps_score_field.value or "").strip().replace(",", ".")
+            try:
+                num = float(score)
+            except ValueError:
+                num = None
+            return cls, score, num
+
+        def gps_open(url):
+            cls, score, num = gps_values()
+            if not re.fullmatch(r"[A-Z0-9]{3,5}", cls) or num is None or num < 0 or num > 400:
+                gps_hint.value = "Scrivi la classe di concorso (es. A028) e il punteggio (es. 42,5)."
+                page.update()
+                return
+            gps_hint.value = ""
+            prefs["gps_class"], prefs["gps_score"] = cls, score
+            save_prefs()
+            page.update()
+            open_url(url)
+
+        def close_gps(e=None):
+            close_dialog(gps_dlg)
+
+        gps_data = load_gps_data()
+        gps_fascia = ft.Dropdown(
+            label="Fascia", value="II",
+            options=[ft.DropdownOption(key=k, text=v) for k, v in GPS_FASCE.items()],
+        )
+        gps_region = ft.Dropdown(
+            label="Regione", value="",
+            options=[ft.DropdownOption(key="", text="Tutta Italia")]
+                    + [ft.DropdownOption(key=r, text=r) for r in sorted(SOURCES.keys())],
+        )
+        gps_info = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+        gps_results = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO, height=220)
+
+        def gps_row(i, r):
+            good = r["ok"]
+            color = ft.Colors.PRIMARY if good else ft.Colors.ERROR
+            verdict = (f"Ci saresti: +{fmt_score(r['margine'])} punti" if good
+                       else f"Ti mancano {fmt_score(-r['margine'])} punti")
+            return ft.Container(
+                padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+                border_radius=12,
+                bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+                content=ft.Row(
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    controls=[
+                        ft.Column(expand=True, spacing=0, controls=[
+                            ft.Text(r["provincia"], size=14, weight=ft.FontWeight.W_700),
+                            ft.Text(f"{r['regione']} · {r['nomine']} nomine", size=11,
+                                    color=ft.Colors.ON_SURFACE_VARIANT),
+                        ]),
+                        ft.Column(spacing=0, horizontal_alignment=ft.CrossAxisAlignment.END, controls=[
+                            ft.Text(verdict, size=12, weight=ft.FontWeight.W_700, color=color),
+                            ft.Text(f"ultimo nominato: {fmt_score(r['soglia'])} (posiz. {r['ultima']})", size=11,
+                                    color=ft.Colors.ON_SURFACE_VARIANT),
+                        ]),
+                    ],
+                ),
+            )
+
+        def run_gps(e=None):
+            gps_results.controls = []
+            cls, score, num = gps_values()
+            num = parse_score(score)
+            if not re.fullmatch(r"[A-Z0-9]{3,5}", cls) or num is None:
+                gps_hint.value = "Scrivi la classe di concorso (es. A028) e il punteggio (es. 42,5)."
+                gps_info.value = ""
+            else:
+                gps_hint.value = ""
+                prefs["gps_class"], prefs["gps_score"] = cls, score
+                save_prefs()
+                fascia = gps_fascia.value or "II"
+                rows = gps_rank(gps_data, cls, fascia, num, gps_region.value or "")
+                if not rows:
+                    gps_info.value = (f"Nessuna nomina trovata per {cls} ({GPS_FASCE.get(fascia, '')}) nelle province "
+                                      "con dati. Controlla la sigla della classe o cambia fascia.")
+                else:
+                    gps_results.controls = [gps_row(i, r) for i, r in enumerate(rows[:40], 1)]
+                    yes = sum(1 for r in rows if r["ok"])
+                    gps_info.value = (f"Con {fmt_score(num)} punti, classe {cls}, {GPS_FASCE.get(fascia, '')}: "
+                                      f"avresti ottenuto una nomina in {yes} province su {len(rows)} con dati. "
+                                      f"Bollettino n. {gps_data.get('bollettino', '?')} {gps_data.get('anno', '')}, "
+                                      f"aggiornato al {gps_data.get('aggiornato', '?')}.")
+            page.update()
+
+        gps_calc_button = ft.FilledButton(content="Trova le province migliori", icon=ft.Icons.PLACE_ROUNDED,
+                                          on_click=run_gps, visible=bool(gps_data))
+        gps_no_data = ft.Text(
+            "I dati dei bollettini non sono ancora nell'app: usa i servizi esterni qui sotto.",
+            size=12, color=ft.Colors.ON_SURFACE_VARIANT, visible=not gps_data)
+
+        gps_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Dove mi conviene fare le GPS?"),
+            content=ft.Column(
+                tight=True, spacing=10, width=340, scroll=ft.ScrollMode.AUTO,
+                controls=[
+                    ft.Text("Inserisci classe, fascia e punteggio: l'app lo confronta con l'ultimo nominato dei "
+                            "bollettini di nomina di ogni provincia.", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                    gps_class_field, gps_fascia, gps_score_field, gps_region, gps_hint,
+                    gps_calc_button, gps_no_data, gps_info, gps_results,
+                    ft.TextButton(content="Calcola su punteggiogps.it", icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
+                                  on_click=lambda e: gps_open(GPS_TOOL_URL)),
+                    ft.TextButton(content="Graduatorie GPS di ogni provincia", icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
+                                  on_click=lambda e: gps_open(GPS_LISTS_URL)),
+                    ft.Text("Solo le province con bollettini già caricati. Nei bollettini successivi si scende più in "
+                            "basso, quindi è una stima prudente. Fa fede l'Ufficio Scolastico della provincia.",
+                            size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                ],
+            ),
+            actions=[ft.TextButton(content="Chiudi", on_click=close_gps)],
+        )
+
+        def open_gps(e=None):
+            first_class = prefs["classes"][0] if prefs["classes"] else ""
+            gps_class_field.value = prefs["gps_class"] or first_class
+            gps_score_field.value = prefs["gps_score"]
+            gps_hint.value = ""
+            gps_info.value = ""
+            gps_results.controls = []
+            show_dialog(gps_dlg)
+
+        gps_button.on_click = open_gps
 
         def on_search_change(e):
             clear_button.visible = bool(search_input.value)
