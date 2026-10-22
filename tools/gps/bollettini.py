@@ -30,21 +30,21 @@ SIGLE = {
     "MO": ("Modena", "Emilia-Romagna"), "MS": ("Massa-Carrara", "Toscana"), "MT": ("Matera", "Basilicata"),
     "NA": ("Napoli", "Campania"), "NO": ("Novara", "Piemonte"), "NU": ("Nuoro", "Sardegna"),
     "OR": ("Oristano", "Sardegna"), "PA": ("Palermo", "Sicilia"), "PC": ("Piacenza", "Emilia-Romagna"),
-    "PD": ("Padova", "Veneto"), "PE": ("Pescara", "Abruzzo"), "PG": ("Perugia", "Umbria"),
-    "PI": ("Pisa", "Toscana"), "PN": ("Pordenone", "Friuli-Venezia Giulia"), "PO": ("Prato", "Toscana"),
-    "PR": ("Parma", "Emilia-Romagna"), "PT": ("Pistoia", "Toscana"), "PU": ("Pesaro e Urbino", "Marche"),
-    "PV": ("Pavia", "Lombardia"), "PZ": ("Potenza", "Basilicata"), "RA": ("Ravenna", "Emilia-Romagna"),
-    "RC": ("Reggio Calabria", "Calabria"), "RE": ("Reggio Emilia", "Emilia-Romagna"), "RG": ("Ragusa", "Sicilia"),
-    "RI": ("Rieti", "Lazio"), "RM": ("Roma", "Lazio"), "RN": ("Rimini", "Emilia-Romagna"),
-    "RO": ("Rovigo", "Veneto"), "SA": ("Salerno", "Campania"), "SI": ("Siena", "Toscana"),
-    "SO": ("Sondrio", "Lombardia"), "SP": ("La Spezia", "Liguria"), "SR": ("Siracusa", "Sicilia"),
-    "SS": ("Sassari", "Sardegna"), "SU": ("Sud Sardegna", "Sardegna"), "SV": ("Savona", "Liguria"),
-    "TA": ("Taranto", "Puglia"), "TE": ("Teramo", "Abruzzo"), "TN": ("Trento", "Trentino-Alto Adige"),
-    "TO": ("Torino", "Piemonte"), "TP": ("Trapani", "Sicilia"), "TR": ("Terni", "Umbria"),
-    "TS": ("Trieste", "Friuli-Venezia Giulia"), "TV": ("Treviso", "Veneto"), "UD": ("Udine", "Friuli-Venezia Giulia"),
-    "VA": ("Varese", "Lombardia"), "VB": ("Verbano-Cusio-Ossola", "Piemonte"), "VC": ("Vercelli", "Piemonte"),
-    "VE": ("Venezia", "Veneto"), "VI": ("Vicenza", "Veneto"), "VR": ("Verona", "Veneto"),
-    "VT": ("Viterbo", "Lazio"), "VV": ("Vibo Valentia", "Calabria"),
+    "PD": ("Padova", "Veneto"), "PG": ("Perugia", "Umbria"), "PI": ("Pisa", "Toscana"),
+    "PN": ("Pordenone", "Friuli-Venezia Giulia"), "PO": ("Prato", "Toscana"), "PR": ("Parma", "Emilia-Romagna"),
+    "PT": ("Pistoia", "Toscana"), "PU": ("Pesaro e Urbino", "Marche"), "PV": ("Pavia", "Lombardia"),
+    "PZ": ("Potenza", "Basilicata"), "RA": ("Ravenna", "Emilia-Romagna"), "RC": ("Reggio Calabria", "Calabria"),
+    "RE": ("Reggio Emilia", "Emilia-Romagna"), "RG": ("Ragusa", "Sicilia"), "RI": ("Rieti", "Lazio"),
+    "RM": ("Roma", "Lazio"), "RN": ("Rimini", "Emilia-Romagna"), "RO": ("Rovigo", "Veneto"),
+    "SA": ("Salerno", "Campania"), "SI": ("Siena", "Toscana"), "SO": ("Sondrio", "Lombardia"),
+    "SP": ("La Spezia", "Liguria"), "SR": ("Siracusa", "Sicilia"), "SS": ("Sassari", "Sardegna"),
+    "SU": ("Sud Sardegna", "Sardegna"), "SV": ("Savona", "Liguria"), "TA": ("Taranto", "Puglia"),
+    "TE": ("Teramo", "Abruzzo"), "TN": ("Trento", "Trentino-Alto Adige"), "TO": ("Torino", "Piemonte"),
+    "TP": ("Trapani", "Sicilia"), "TR": ("Terni", "Umbria"), "TS": ("Trieste", "Friuli-Venezia Giulia"),
+    "TV": ("Treviso", "Veneto"), "UD": ("Udine", "Friuli-Venezia Giulia"), "VA": ("Varese", "Lombardia"),
+    "VB": ("Verbano-Cusio-Ossola", "Piemonte"), "VC": ("Vercelli", "Piemonte"), "VE": ("Venezia", "Veneto"),
+    "VI": ("Vicenza", "Veneto"), "VR": ("Verona", "Veneto"), "VT": ("Viterbo", "Lazio"),
+    "VV": ("Vibo Valentia", "Calabria"),
 }
 
 CLASS_RE = r"[A-Z]{1,2}[0-9A-Z]{2,3}"
@@ -62,7 +62,8 @@ ROW_RAW = re.compile(r"^(?P<tipo>GPS|GAE)\s+F(?P<fascia>\d)\s+(?P<pos>\d{1,5})\s
 
 def pdf_text(path, raw):
     cmd = ["pdftotext", "-raw" if raw else "-layout", path, "-"]
-    return subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+    res = subprocess.run(cmd, capture_output=True, check=True)
+    return res.stdout.decode("utf-8", errors="ignore")
 
 
 def _school_siglas(text):
