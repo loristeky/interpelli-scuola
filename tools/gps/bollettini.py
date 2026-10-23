@@ -128,23 +128,63 @@ def read_pdf(path):
     return sigla, best_rows
 
 
-def aggregate(rows_by_sigla):
-    """rows_by_sigla: {sigla: [(classe, fascia, pos, punteggio), ...]}.
-    Per provincia/classe/fascia salva: n nomine, punteggio minimo e massimo, posizione più bassa e
-    l'elenco "s" dei nominati come [punteggio, posizione] in ordine di punteggio decrescente
-    (nessun nome: serve a escludere la quota riservata, vedi main.py)."""
+def turn_from_name(path):
+    """Numero del bollettino dal nome del file («bollettino-2», «Bollettino n. 3»...); '1' se non c'è."""
+    name = re.sub(r"^.*[\\/]", "", str(path))
+    m = re.search(r"boll(?:ettino)?[\s._-]*(?:n\.?[\s._-]*)?(\d{1,2})", name, re.I)
+    return m.group(1) if m else "1"
+
+
+def aggregate(rows_by_sigla_turn):
+    """rows_by_sigla_turn: {(sigla, turno): [(classe, fascia, pos, punteggio), ...]}.
+    Per provincia/classe/fascia salva: n nomine totali, punteggio minimo e massimo, posizione più bassa e,
+    per ogni turno (bollettino), l'elenco "s" dei nominati come [punteggio, posizione] in ordine di punteggio
+    decrescente (nessun nome: serve a escludere la quota riservata, che si calcola turno per turno)."""
     provinces = {}
-    for sigla, rows in rows_by_sigla.items():
+    for (sigla, turno), rows in sorted(rows_by_sigla_turn.items()):
         prov, reg = SIGLE[sigla]
         entry = provinces.setdefault(prov, {"regione": reg, "classi": {}})
+        turns = {}
         for cdc, fascia, pos, score in rows:
-            e = entry["classi"].setdefault(f"{cdc}:{fascia}", {"n": 0, "min": score, "max": score, "pos": pos, "s": []})
+            e = entry["classi"].setdefault(f"{cdc}:{fascia}", {"n": 0, "min": score, "max": score, "pos": pos, "t": []})
             e["n"] += 1
-            e["min"] = min(e["min"], score)
+            if score < e["min"]:
+                e["min"], e["pos"] = score, pos
+            elif score == e["min"]:
+                e["pos"] = max(e["pos"], pos)
             e["max"] = max(e["max"], score)
-            e["pos"] = max(e["pos"], pos)
-            e["s"].append([score, pos])
-    for entry in provinces.values():
-        for e in entry["classi"].values():
-            e["s"].sort(key=lambda x: (-x[0], x[1]))
+            turns.setdefault(f"{cdc}:{fascia}", []).append([score, pos])
+        for key, lst in turns.items():
+            lst.sort(key=lambda x: (-x[0], x[1]))
+            entry["classi"][key]["t"].append({"b": turno, "s": lst})
     return provinces
+
+
+def merge(old, new):
+    """Unisce due elenchi di province: un turno già presente viene sostituito, gli altri si aggiungono.
+    Province e classi non toccate restano come sono."""
+    out = json_copy(old)
+    for prov, info in new.items():
+        dst = out.setdefault(prov, {"regione": info["regione"], "classi": {}})
+        dst["regione"] = info["regione"]
+        for key, e in info["classi"].items():
+            cur = dst["classi"].get(key)
+            old_turns = (cur.get("t") or ([{"b": "1", "s": cur["s"]}] if cur.get("s") else [])) if cur else []
+            turns = {t["b"]: t for t in old_turns}
+            for t in e["t"]:
+                turns[t["b"]] = t
+            merged = [turns[b] for b in sorted(turns, key=lambda x: (int(x) if x.isdigit() else 0, x))]
+            dst["classi"][key] = _entry_from_turns(merged)
+    return out
+
+
+def json_copy(obj):
+    import json
+    return json.loads(json.dumps(obj))
+
+
+def _entry_from_turns(turns):
+    allrows = [(sc, pos) for t in turns for sc, pos in t["s"]]
+    lowest = min(sc for sc, _ in allrows)
+    return {"n": len(allrows), "min": lowest, "max": max(sc for sc, _ in allrows),
+            "pos": max(pos for sc, pos in allrows if sc == lowest), "t": turns}

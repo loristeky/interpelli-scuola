@@ -32,11 +32,11 @@ SOURCES = {
     "Abruzzo": [
         ("USP Chieti e Pescara", "https://www.istruzionechietipescara.it/category/interpelli-provinciali/feed/", 1),
         ("USP Teramo", "https://www.csateramo.it/wpusp/interpelli", 1),
-        ("USP L'Aquila", "https://lnx.csalaquila.it/wp/category/interpelli/", 1)
+        ("USP L'Aquila", "https://www.uspuquila.it/category/interpelli/feed/", 1)
     ],
     "Basilicata": [
         ("USP Matera", "https://www.istruzionematera.it/category/interpelli/feed/", 1),
-        ("USP Potenza", "https://interpelliamo.it/interpelli/potenza", 1)
+        ("USP Potenza", "https://www.usppotenza.it/category/interpelli/feed/", 1)
     ],
     "Calabria": [
         ("USP Reggio Calabria", "https://www.usprc.it/category/interpelli/feed/", 1),
@@ -111,10 +111,7 @@ SOURCES = {
     ],
     "Sardegna": [
         ("USP Cagliari", "https://www.uspcagliari.it/category/interpelli/feed/", 1),
-        ("USP Sassari", "https://www.uspsassari.it/category/interpelli/feed/", 1),
-	    ("USP Nuoro", "https://www.mim.gov.it/web/nuoro/interpelli/", 1),
-	    ("USP Oristano", "https://www.mim.gov.it/web/oristano/reclutamento/", 1)
-    ],
+        ("USP Sassari", "https://www.uspsassari.it/category/interpelli/feed/", 1)
     ],
     "Sicilia": [
         ("USP Agrigento", "https://ag.usr.sicilia.it/category/interpelli/feed/", 1),
@@ -122,34 +119,27 @@ SOURCES = {
         ("USP Catania", "https://ct.usr.sicilia.it/category/interpelli/feed/", 1),
         ("USP Palermo", "https://pa.usr.sicilia.it/category/interpelli/feed/", 1),
         ("USP Siracusa", "https://sr.usr.sicilia.it/category/interpelli/feed/", 1),
-        ("USP Trapani", "https://tp.usr.sicilia.it/personale-scuola/interpelli/", 1)
+        ("USP Trapani", "https://tp.usr.sicilia.it/category/interpelli/feed/", 1)
     ],
     "Toscana": [
-        ("USP Arezzo", "https://www.arezzoistruzione.it/usparezzo/index.php/interpelli?start=10&Itemid=666", 1),
-        ("USP Firenze", "https://www.ust.fi.it/mese/interpelli/", 1),
-	    ("USP Grosseto", "https://www.ufficioscolasticogrosseto.it/uff7/index.php/utilita/interpelli-nazionali-2/", 1),
-	    ("USP Livorno", "https://www.ustli.it/usp_livorno/index.php/docenti/interpelli/", 1),
-        ("USP Lucca", "https://ustlucca.it/category/interpelli/", 1),
-	    ("USP Massa-Carrara", "https://www.ustms.it/category/docenti/interpelli/", 1),
-        ("USP Pisa", "https://www.usp-pi.it/category/interpelli/", 1),
-	    ("USP Pistoia", "https://www.ufficioscolasticoprovinciale.pistoia.it/category/docenti/interpelli-docenti/", 1),
-	    ("USP Prato", "https://www.toscana.istruzione.it/category/usp-firenze/interpelli/feed/", 1),
-	    ("USP Siena", "https://www.uspsi.it/uspsiena/interpelli-docenti/", 1)
+        ("USP Firenze", "https://www.toscana.istruzione.it/category/usp-firenze/interpelli/feed/", 1),
+        ("USP Lucca", "https://www.toscana.istruzione.it/category/usp-lucca/interpelli/feed/", 1),
+        ("USP Pisa", "https://www.toscana.istruzione.it/category/usp-pisa/interpelli/feed/", 1)
     ],
     "Trentino-Alto Adige": [
-        ("USP Trento", "https://www.vivoscuola.it/Lavora-con-noi/Quadri-di-disponibilita/", 1)
+        ("USP Trento", "https://www.vivoscuola.it/feed/", 1)
     ],
     "Umbria": [
-        ("USP Perugia", "https://istruzione.umbria.it/interpelli/interpelli-aperti/", 1)
+        ("USP Perugia", "https://www.usp.perugia.it/category/interpelli/feed/", 1)
     ],
     "Valle d'Aosta": [
-        ("USP Aosta", "https://scuole.vda.it/interpelli/", 1)
+        ("USP Aosta", "https://www.scuole.vda.it/category/interpelli/feed/", 1)
     ],
     "Veneto": [
         ("USP Padova", "https://padova.istruzioneveneto.gov.it/category/interpelli-personale-docente/", 1),
         ("USP Treviso", "https://treviso.istruzioneveneto.gov.it/tag/interpelli-istituti-scolastici/", 1),
         ("USP Venezia", "https://venezia.istruzioneveneto.gov.it/interpelli-supplenze/", 1),
-        ("USP Verona", "https://verona.istruzioneveneto.gov.it/index.php/interpelli-2026-2027/", 1)
+        ("USP Verona", "https://verona.istruzioneveneto.gov.it/index.php/interpelli-as-2025-2026/", 1)
     ]
 }
 
@@ -920,18 +910,24 @@ def fmt_score(value):
 
 def gps_threshold(entry, riserva=0.0):
     """(soglia, posizione, nomine, escluse, minima).
-    soglia = punteggio dell'ultimo nominato dopo aver tolto al massimo la quota riservata (i punteggi più bassi);
+    soglia = punteggio dell'ultimo nominato dopo aver tolto, turno per turno, al massimo la quota riservata
+    (i punteggi più bassi); con più turni vale il punteggio più basso raggiunto.
     minima = punteggio dell'ultimo nominato in assoluto. Senza elenco dei punteggi soglia = minima."""
     n = int(entry["n"])
     minima = float(entry["min"])
-    scores = entry.get("s")
-    if not scores or riserva <= 0:
+    turns = entry.get("t") or ([{"s": entry["s"]}] if entry.get("s") else [])
+    if not turns or riserva <= 0:
         return minima, int(entry.get("pos", 0)), n, 0, minima
-    skip = int(n * riserva)                         # quota riservata, arrotondata per difetto
-    ordered = sorted(scores, key=lambda x: (-x[0], x[1]))
-    kept = ordered[:max(1, len(ordered) - skip)]
-    last = kept[-1]
-    return float(last[0]), int(last[1]), n, len(ordered) - len(kept), minima
+    best, escluse = None, 0
+    for t in turns:
+        ordered = sorted(t["s"], key=lambda x: (-x[0], x[1]))
+        skip = int(len(ordered) * riserva)             # quota riservata del turno, arrotondata per difetto
+        kept = ordered[:max(1, len(ordered) - skip)]
+        escluse += len(ordered) - len(kept)
+        last = kept[-1]
+        if best is None or last[0] < best[0]:
+            best = last
+    return float(best[0]), int(best[1]), n, escluse, minima
 
 
 def gps_rank(data, cdc, fascia, score, region="", riserva=0.0):

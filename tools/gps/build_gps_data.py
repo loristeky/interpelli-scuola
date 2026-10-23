@@ -6,13 +6,16 @@ dei nominati, posizione più bassa raggiunta. Non vengono letti né salvati nomi
 La provincia si riconosce dai codici delle scuole nel bollettino.
 
 Uso (serve il comando `pdftotext`, pacchetto poppler-utils):
-  python tools/gps/build_gps_data.py bollettino_pescara.pdf bollettino_chieti.pdf ... \\
-         --output assets/gps_data.json --bollettino 1
-  Per aggiungere province a un file già esistente:  ... --aggiungi
+  python tools/gps/build_gps_data.py --cartella bollettini --output assets/gps_data.json
+  oppure elencando i file:  python tools/gps/build_gps_data.py a.pdf b.pdf --output assets/gps_data.json
+
+Il numero del turno si legge dal nome del file («bollettino-2.pdf»); se manca vale 1. Più bollettini della
+stessa provincia sono turni diversi: la quota riservata si calcola turno per turno.
 """
 import argparse
 import json
 import os
+import subprocess
 import sys
 from datetime import date
 
@@ -28,48 +31,72 @@ def default_year(today=None):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("pdf", nargs="+", help="uno o più bollettini di nomina (PDF)")
+    ap.add_argument("pdf", nargs="*", help="uno o più bollettini di nomina (PDF)")
+    ap.add_argument("--cartella", help="cartella con tutti i PDF (anche nelle sottocartelle)")
     ap.add_argument("--output", default="assets/gps_data.json")
     ap.add_argument("--anno", default=default_year(), help="anno scolastico, es. 2026/27")
-    ap.add_argument("--bollettino", default="1", help="numero del bollettino")
+    ap.add_argument("--bollettino", default="", help="numero del bollettino per file senza numero nel nome (default 1)")
     ap.add_argument("--provincia", help="sigla (es. PE) se non si riconosce dai codici scuola; vale per tutti i PDF")
-    ap.add_argument("--aggiungi", action="store_true", help="unisci ai dati già presenti nel file di output")
+    ap.add_argument("--aggiungi", action="store_true",
+                    help="unisci ai dati già presenti (un turno già presente viene sostituito)")
+    ap.add_argument("--elaborati", help="scrive qui l'elenco dei PDF letti con successo")
     args = ap.parse_args(argv)
 
+    paths = list(args.pdf)
+    if args.cartella:
+        for root, _dirs, files in os.walk(args.cartella):
+            paths += [os.path.join(root, f) for f in files if f.lower().endswith(".pdf")]
+    paths = sorted(set(paths))
+    if not paths:
+        print("Nessun PDF trovato.", file=sys.stderr)
+        return 1
     rows_by_sigla = {}
     dates = []
-    for path in args.pdf:
-        sigla, rows = bollettini.read_pdf(path)
+    failed = 0
+    processed = []
+    for path in paths:
+        try:
+            sigla, rows = bollettini.read_pdf(path)
+        except (OSError, subprocess.CalledProcessError):
+            print(f"ATTENZIONE {os.path.basename(path)}: PDF non leggibile: file saltato", file=sys.stderr)
+            failed += 1
+            continue
         sigla = (args.provincia or sigla or "").upper()
-        if sigla not in bollettini.SIGLE:
-            print(f"{path}: provincia non riconosciuta (usa --provincia)", file=sys.stderr)
-            return 1
-        if not rows:
-            print(f"{path}: nessuna riga GPS trovata", file=sys.stderr)
-            return 1
-        rows_by_sigla.setdefault(sigla, []).extend(rows)
+        if sigla not in bollettini.SIGLE or not rows:
+            print(f"ATTENZIONE {os.path.basename(path)}: "
+                  + ("provincia non riconosciuta (usa --provincia)" if rows else "nessuna riga GPS trovata")
+                  + ": file saltato", file=sys.stderr)
+            failed += 1
+            continue
+        processed.append(path)
+        turno = args.bollettino or bollettini.turn_from_name(path)
+        rows_by_sigla.setdefault((sigla, turno), []).extend(rows)
         dates.append(bollettini.pdf_date(path))
-        print(f"{os.path.basename(path)}: {bollettini.SIGLE[sigla][0]}, {len(rows)} nomine GPS")
+        print(f"{os.path.basename(path)}: {bollettini.SIGLE[sigla][0]}, bollettino {turno}, {len(rows)} nomine GPS")
 
+    if not rows_by_sigla:
+        return 1
     provinces = bollettini.aggregate(rows_by_sigla)
     if args.aggiungi and os.path.exists(args.output):
         with open(args.output, encoding="utf-8") as f:
             old = json.load(f)
-        merged = dict(old.get("province", {}))
-        merged.update(provinces)
-        provinces = merged
+        provinces = bollettini.merge(old.get("province", {}), provinces)
     data = {
         "anno": args.anno,
         "aggiornato": max([d for d in dates if d] or [date.today().isoformat()]),
-        "bollettino": args.bollettino,
+        "bollettino": max({t for (_s, t) in rows_by_sigla}, key=lambda x: int(x) if x.isdigit() else 0),
         "fonte": "Bollettini di nomina GPS pubblicati dagli Uffici scolastici provinciali",
         "province": dict(sorted(provinces.items())),
     }
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+    if args.elaborati:
+        with open(args.elaborati, "w", encoding="utf-8") as f:
+            f.write("\n".join(processed) + "\n")
     pairs = sum(len(p["classi"]) for p in provinces.values())
-    print(f"{len(provinces)} province, {pairs} classi/fasce -> {args.output}")
+    print(f"{len(provinces)} province, {pairs} classi/fasce -> {args.output}"
+          + (f" ({failed} file saltati)" if failed else ""))
     return 0
 
 

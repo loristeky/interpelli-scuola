@@ -7,19 +7,19 @@ state, il punteggio dell'ultimo nominato (la «soglia») e la posizione raggiunt
 
 Ora il file contiene Pescara, Chieti e L'Aquila (1° bollettino 2026/27).
 
-## Aggiungere province o bollettini
-1. Scarica il PDF del bollettino di nomina dal sito dell'Ufficio scolastico provinciale.
-2. Serve il comando `pdftotext` (pacchetto *poppler-utils*; su Windows: poppler per Windows).
-3. Esegui, aggiungendo ai dati esistenti:
+## Aggiungere province o bollettini (automatico)
+Carica i PDF nella cartella `bollettini` del repository (vedi `bollettini/LEGGIMI.md`): l'automazione
+«Aggiorna dati GPS» li legge, aggiorna `assets/gps_data.json` e cancella i PDF. Poi ricostruisci l'app.
 
-       python tools/gps/build_gps_data.py bollettino_teramo.pdf --output assets/gps_data.json --aggiungi --bollettino 1
+A mano (serve `pdftotext`, pacchetto *poppler-utils*):
 
-   La provincia si riconosce dai codici delle scuole (se non succede usa `--provincia TE`).
-4. Ricostruisci l'app (Actions → Build AAB / APK).
+    python tools/gps/build_gps_data.py --cartella bollettini --output assets/gps_data.json --aggiungi
 
-I formati letti finora sono i tre PDF di esempio (Excel esportato in PDF con colonne, e
-«Stampa in PDF» con una riga per classe). Altre province possono usare layout diversi: il comando
-dice se non trova righe; in quel caso mandami il PDF e adatto il lettore.
+- La provincia si riconosce dai codici delle scuole (se non succede usa `--provincia TE`).
+- Il turno si legge dal nome del file (`...bollettino-2...`); senza numero vale 1. Un turno già presente
+  viene sostituito, quelli nuovi si aggiungono.
+- I formati letti finora sono i tre PDF di esempio (Excel esportato in PDF e «Stampa in PDF»).
+  Se un file non si legge, il comando lo segnala e lo salta: mandami il PDF e adatto il lettore.
 
 ## Limiti
 - Il bollettino n. 1 è solo il primo giro: nei successivi si scende più in basso, quindi la soglia
