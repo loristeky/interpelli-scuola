@@ -1,0 +1,48 @@
+name: Aggiorna dati GPS
+
+# Si avvia da solo quando carichi bollettini PDF nella cartella "bollettini".
+# Legge i PDF, aggiorna assets/gps_data.json e cancella i PDF letti (contengono nomi di persone).
+# Istruzioni: bollettini/LEGGIMI.md
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'bollettini/**.pdf'
+      - 'bollettini/**.PDF'
+  workflow_dispatch:
+
+concurrency:
+  group: aggiorna-gps
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  aggiorna:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Installa pdftotext
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+
+      - name: Leggi i bollettini
+        run: |
+          python tools/gps/build_gps_data.py --cartella bollettini --output assets/gps_data.json \
+            --aggiungi --elaborati "$RUNNER_TEMP/elaborati.txt"
+
+      - name: Cancella i PDF letti e salva i dati
+        run: |
+          while IFS= read -r f; do [ -n "$f" ] && git rm -q --ignore-unmatch "$f"; done < "$RUNNER_TEMP/elaborati.txt"
+          git add assets/gps_data.json
+          if git diff --cached --quiet; then echo "Nessuna modifica"; exit 0; fi
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git commit -m "Aggiorna dati GPS dai bollettini"
+          git push
