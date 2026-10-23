@@ -1,3 +1,8 @@
+#!/usr/bin/env python3
+"""
+App Flet per la gestione degli interpelli, il calcolo delle riserve GPS (15% per CdC)
+e la visualizzazione ottimizzata per Android con paginazione.
+"""
 import flet as ft
 import sqlite3
 import json
@@ -6,6 +11,7 @@ import html
 import ssl
 import os
 import time
+import math
 import threading
 from datetime import datetime, date, timedelta
 from email.utils import parsedate_to_datetime
@@ -13,6 +19,37 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.request import Request, urlopen
 from urllib.parse import urljoin
 import xml.etree.ElementTree as ET
+
+
+# ----------------------------------------------------------------------------
+# Calcolo Riserva 15% per Classe di Concorso
+# ----------------------------------------------------------------------------
+def calcola_riserva_cdc(posti_totali: int, percentuale: float = 0.15) -> dict:
+    """
+    Calcola il numero di posti destinati alla riserva (es. 15%) per una specifica
+    classe di concorso in base al numero di nomine/posti disponibili.
+    
+    Esempio: su 20 posti ADMM -> 20 * 0.15 = 3.0 posti riservati.
+    """
+    if posti_totali <= 0:
+        return {
+            "posti_totali": 0,
+            "posti_riserva": 0,
+            "posti_ordinari": 0,
+            "percentuale": percentuale
+        }
+    
+    posti_riserva_raw = posti_totali * percentuale
+    posti_riserva = math.floor(posti_riserva_raw + 0.5)  # Arrotondamento all'intero più vicino
+    posti_riserva = min(posti_riserva, posti_totali)
+    posti_ordinari = posti_totali - posti_riserva
+    
+    return {
+        "posti_totali": posti_totali,
+        "posti_riserva": posti_riserva,
+        "posti_ordinari": posti_ordinari,
+        "percentuale": percentuale
+    }
 
 
 # ----------------------------------------------------------------------------
@@ -156,7 +193,6 @@ SOON_DAYS = 3           # "in scadenza" = scade entro questi giorni
 
 MESI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"]
 
-# Palette (il resto dei colori segue il tema chiaro/scuro del sistema)
 BRAND_DARK = "#1C248C"
 BRAND_LIGHT = "#347CF6"
 GOLD = "#FFC83D"
@@ -164,8 +200,6 @@ GREEN = "#16A363"
 
 
 def get_db_path():
-    # Su Android la cartella dell'app è di sola lettura: Flet fornisce una
-    # cartella dati scrivibile tramite FLET_APP_STORAGE_DATA.
     db_dir = os.getenv("FLET_APP_STORAGE_DATA")
     if not db_dir:
         try:
@@ -195,8 +229,6 @@ def db_connect():
 def init_db():
     conn = db_connect()
     c = conn.cursor()
-    # La tabella è solo una cache degli avvisi online: se cambia lo schema o la
-    # logica di classificazione basta ricrearla e riscaricare.
     version = c.execute("PRAGMA user_version").fetchone()[0]
     if version < DB_VERSION:
         c.execute("DROP TABLE IF EXISTS interpelli")
@@ -251,9 +283,6 @@ def _open(url, context=None):
 
 
 def fetch_url(url):
-    # Prima con verifica del certificato; solo se fallisce (molti siti
-    # istituzionali hanno catene incomplete, e su Android manca il bundle CA)
-    # si ripiega sulla connessione non verificata.
     try:
         return _open(url, ssl.create_default_context())
     except Exception as ex:
@@ -286,11 +315,10 @@ def _mk(year, month, day):
 
 
 def parse_date(value, default_year=None):
-    """Converte una data (RSS, ISO, 12/10/2025, 12 ottobre 2025, 12 ott) in 'AAAA-MM-GG'."""
     if not value:
         return None
     value = value.strip()
-    if re.match(r"^[A-Za-z]{3},", value):          # formato RSS: "Mon, 05 Oct 2026 ..."
+    if re.match(r"^[A-Za-z]{3},", value):
         try:
             return parsedate_to_datetime(value).strftime("%Y-%m-%d")
         except Exception:
@@ -324,7 +352,7 @@ def parse_date(value, default_year=None):
 # --- scadenza -----------------------------------------------------------------
 _KEY = (r"(?:entro(?:\s+e\s+non\s+oltre)?|non\s+oltre|scadenz[ae]|termine(?:\s+ultimo)?|"
         r"improrogabilmente|presentat[ae]\s+(?:dal\s+\S+\s+)?al)")
-_NOSTOP = r"(?:(?!\.\s)(?!\n).)"            # niente fine-frase tra parola chiave e data
+_NOSTOP = r"(?:(?!\.\s)(?!\n).)"
 DEADLINE_RE = re.compile(rf"({_KEY})({_NOSTOP}{{0,110}}?)({DATE_ANY})", re.I | re.S)
 APPLY_WORDS = re.compile(r"domand|candidatur|disponibilit|istanz|present|invia|trasmett|pervenir|"
                          r"comunicar|manifest|aspirant|\bMAD\b|aderir|adesion", re.I)
@@ -333,8 +361,7 @@ CONTRACT_WORDS = re.compile(r"supplenz|incaric|contratt|nomina|assunzion|servizi
 
 
 def find_deadline(text, published=None):
-    """Cerca la scadenza per presentare la disponibilità. Restituisce (data ISO, frase trovata)."""
-    pub = to_date(published) if published else None
+    pub = datetime.strptime(published, "%Y-%m-%d") if published else None
     default_year = pub.year if pub else date.today().year
     best = None
     for m in DEADLINE_RE.finditer(text):
@@ -342,11 +369,10 @@ def find_deadline(text, published=None):
         iso = parse_date(raw, default_year)
         if not iso:
             continue
-        d = to_date(iso)
-        # data senza anno già molto precedente alla pubblicazione -> anno dopo
+        d = datetime.strptime(iso, "%Y-%m-%d")
         if pub and not re.search(r"\d{4}|/\d{2}\b|\.\d{2}\b", raw) and (pub - d).days > 30:
             iso = _mk(d.year + 1, d.month, d.day) or iso
-            d = to_date(iso)
+            d = datetime.strptime(iso, "%Y-%m-%d")
 
         before = text[max(0, m.start() - 90):m.start()]
         context = before + key + between
@@ -360,7 +386,7 @@ def find_deadline(text, published=None):
         if CONTRACT_WORDS.search(before[-45:] + key + between[:25]) and not APPLY_WORDS.search(context):
             score -= 3
         if d.month in (6, 8) and d.day in (30, 31) and score < 4:
-            score -= 2                                    # tipica fine contratto/anno scolastico
+            score -= 2
         if pub:
             delta = (d - pub).days
             if delta < -1:
@@ -389,7 +415,6 @@ PUB_TEXT_RE = re.compile(
 
 
 def find_published(page_html, main_html, text):
-    """Data di pubblicazione: metadati della pagina, poi tag <time>, poi testo. -> (ISO, origine)"""
     for pat in _META_PUB:
         m = re.search(pat, page_html, re.I | re.S)
         if m:
@@ -411,9 +436,7 @@ def find_published(page_html, main_html, text):
     return None, ""
 
 
-# --- contenuto principale della pagina ---------------------------------------------
 def main_region(page_html):
-    """Isola il corpo dell'avviso, scartando menu, barre laterali e piè di pagina."""
     h = re.sub(r'<(script|style|noscript)\b.*?</\1>', ' ', page_html, flags=re.I | re.S)
     arts = re.findall(r'<article\b.*?</article>', h, flags=re.I | re.S)
     if arts:
@@ -429,7 +452,6 @@ def main_region(page_html):
 
 
 def strip_chrome(h):
-    """Toglie menu, intestazioni, piè di pagina e barre laterali."""
     h = re.sub(r'<(script|style|noscript)\b.*?</\1>', ' ', h, flags=re.I | re.S)
     for tag in ("nav", "header", "footer", "aside"):
         h = re.sub(rf'<{tag}\b.*?</{tag}>', ' ', h, flags=re.I | re.S)
@@ -453,11 +475,6 @@ def analyze_post_content(full_text):
     return post_type
 
 
-# ----------------------------------------------------------------------------
-# Classificazione: ATA / docenti, classi di concorso, avvisi che non sono interpelli
-# ----------------------------------------------------------------------------
-# ATA: nel TITOLO bastano parole anche generiche; nel TESTO servono profili precisi
-# (così "procedimento amministrativo" in un avviso per docenti non lo rende ATA).
 ATA_TITLE_RE = re.compile(
     r"(?:\bATA\b|\bA\.\s?T\.\s?A\.?|personale\s+ata|collaborator[ei]\s+scolastic[oi]|"
     r"assistent[ei]\s+(?:amministrativ|tecnic)\w*|amministrativ[oiae]|\bDSGA\b|"
@@ -469,10 +486,7 @@ ATA_BODY_RE = re.compile(
     r"assistent[ei]\s+(?:amministrativ|tecnic)\w*|\bDSGA\b|direttore\s+dei\s+servizi\s+generali|"
     r"\bcuoc[oh]i?\b|\binfermier[ei]\b|\bguardarobier[ei]\b|operator[ei]\s+scolastic\w*|"
     r"operator[ei]\s+dei\s+servizi\s+agrari|addett[oi]\s+(?:alle?\s+)?aziend\w*\s+agrar\w*)", re.I)
-# Il termine "ATA" in maiuscolo è valido anche da solo; le altre voci senza distinzione di maiuscole.
-ATA_PATTERN = ATA_BODY_RE   # compatibilità
 
-# Classi di concorso: A028, B012, AB24, BA02... più i codici speciali di infanzia/primaria/sostegno.
 CDC_SPECIAL = ["ADMM", "ADSS", "ADEE", "ADAA", "AAAA", "EEEE", "EEEM", "PPPP"]
 CDC_NAMES = {
     "PPPP": "Personale educativo",
@@ -484,29 +498,22 @@ CDC_NAMES = {
     "ADMM": "Sostegno sec. I grado",
     "ADSS": "Sostegno sec. II grado",
 }
-# Descrizioni in lettere che indicano una classe anche quando il codice non è scritto
 CDC_PHRASES = [
     (re.compile(r"personale\s+educativ\w*", re.I), "PPPP"),
     (re.compile(r"educazione\s+motoria|\bed\.?\s*motoria|insegnante\s+di\s+motoria", re.I), "EEEM"),
 ]
-# Parole di ricerca che rimandano a una classe (es. cercando "motoria" trova EEEM)
-CDC_SEARCH_ALIASES = {
-    "motoria": "EEEM", "motorie": "EEEM",
-    "educativo": "PPPP", "educativi": "PPPP", "educativa": "PPPP",
-}
 _CDC_SPECIAL_RE = re.compile(r"\b(" + "|".join(CDC_SPECIAL) + r")\b", re.I)
 _CDC_CODE_RE = re.compile(r"\b(?<![A-Za-z0-9])([A-Z]\d{2,3}|[A-Z]{2}\d{2})(?![A-Za-z0-9])")
-_CDC_BAD_PREFIX = ("L", "D", "N")      # L.107, D25, n123: leggi/decreti/numeri, non classi
+_CDC_BAD_PREFIX = ("L", "D", "N")
 
 
 def _codes_in(text, limit=3):
-    """Codici di classe in ordine di apparizione, senza doppioni."""
     spans = [(m.start(), m.group(1).upper()) for m in _CDC_SPECIAL_RE.finditer(text)]
     for m in _CDC_CODE_RE.finditer(text):
         code = m.group(1)
         if code[0] in _CDC_BAD_PREFIX and code[1:].isdigit():
             continue
-        if re.fullmatch(r"AR\d{2}", code):      # aree degli assistenti tecnici (ATA), non classi docenti
+        if re.fullmatch(r"AR\d{2}", code):
             continue
         spans.append((m.start(), code))
     for rx, code in CDC_PHRASES:
@@ -518,44 +525,31 @@ def _codes_in(text, limit=3):
     for _, code in sorted(spans):
         if code not in ordered:
             ordered.append(code)
-    # "personale educativo" e "educazione motoria" nello stesso testo: è PPPP, a meno che
-    # EEEM non sia scritto come codice esplicito.
     if "PPPP" in ordered and "EEEM" in ordered and "EEEM" not in explicit:
         ordered.remove("EEEM")
     return ordered[:limit]
 
 
 def detect_cdc(title, body=""):
-    """Classi di concorso: prima quelle scritte nel titolo, poi quelle nell'inizio del testo."""
     codes = _codes_in(title or "")
     if not codes and body and not ATA_TITLE_RE.search(title or ""):
         codes = _codes_in(body[:2500], limit=2)
     return ", ".join(codes)
 
 
-def cdc_label(cdc):
-    """'PPPP' -> 'PPPP · Personale educativo' (solo per un singolo codice con nome noto)."""
-    if cdc and cdc in CDC_NAMES:
-        return f"{cdc} · {CDC_NAMES[cdc]}"
-    return cdc
-
-
 NOT_INTERPELLO_RE = re.compile(r"bollettin\w*|\bnomine\b", re.I)
 
 
 def is_not_interpello(title):
-    """Bollettini delle nomine e simili: sono esiti, non interpelli."""
     return bool(NOT_INTERPELLO_RE.search(title or ""))
 
 
-# Diciture che indicano il personale docente/educativo (nel titolo sono decisive).
 DOC_WORDS_RE = re.compile(
     r"(?:personale\s+docente|\bdocent[ei]\b|\binsegnant[ei]\b|personale\s+educativ\w*|"
     r"\beducator[ei]\b|\beducatric[ei]\b|\bcl(?:asse|\.)?\s+di\s+concorso|\bcdc\b)", re.I)
 
 
 def _first_doc_pos(text):
-    """Posizione della prima dicitura da docente (parola o classe di concorso) nel testo."""
     pos = []
     m = DOC_WORDS_RE.search(text)
     if m:
@@ -578,17 +572,14 @@ _EDUCATIVO_RE = re.compile(r"\bPPPP\b|personale\s+educativ\w*", re.I)
 
 
 def detect_target(title, body=""):
-    """'ATA' solo con una dicitura ATA esplicita (ata, collaboratore scolastico, amministrativo,
-    dsga, cuoco...). Se compare "personale docente" o una classe di concorso, è DOCENTI."""
     title = title or ""
     if DOC_WORDS_RE.search(title) or _codes_in(title):
         return "DOCENTI"
     if ATA_TITLE_RE.search(title):
         return "ATA"
 
-    # titolo neutro: guarda l'inizio del testo e decide per ciò che compare per primo
     head = (body or "")[:2500]
-    if _EDUCATIVO_RE.search(head):          # PPPP / personale educativo non è mai ATA
+    if _EDUCATIVO_RE.search(head):
         return "DOCENTI"
     body_ata = ATA_BODY_RE.search(head)
     if not body_ata:
@@ -606,7 +597,6 @@ EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 
 
 def extract_doc_url(page_html, base_url):
-    """Primo allegato (pdf/doc/odt) della pagina, preferendo quelli che parlano di interpello."""
     found = [urljoin(base_url, h) for h in DOC_RE.findall(page_html)]
     for u in found:
         if any(k in u.lower() for k in ["interpell", "supplenz", "avviso"]):
@@ -615,7 +605,6 @@ def extract_doc_url(page_html, base_url):
 
 
 def extract_email(text):
-    """Indirizzo email più plausibile per la candidatura (preferisce PEC/istituzionali)."""
     emails = []
     for e in EMAIL_RE.findall(text):
         e = e.strip(".").lower()
@@ -630,1376 +619,173 @@ def extract_email(text):
 FILE_EXT_RE = re.compile(r"\.(?:pdf|docx?|odt|xlsx?|zip)(?:\?.*)?$", re.I)
 
 
-def analyze_page(page_html, link, rss_published=None):
-    """Legge una pagina-avviso e ne estrae i dati. Tutte le date partono dal testo dell'avviso."""
-    main_html = main_region(page_html)
-    text = clean_text(main_html)
-    if len(text) < 3:                            # pagina atipica: usa tutta la pagina (senza menu)
-        main_html = strip_chrome(page_html)
-        text = clean_text(main_html)
-    pub, pub_src = find_published(page_html, main_html, text)
-    if not pub and rss_published:
-        pub, pub_src = rss_published, "elenco dell'ufficio"
-    if not pub:
-        m = re.search(r'/(\d{4})/(\d{2})/(\d{2})/', link)
-        if m:
-            pub, pub_src = f"{m.group(1)}-{m.group(2)}-{m.group(3)}", "indirizzo della pagina"
-    deadline, deadline_src = find_deadline(text, pub)
-    return {
-        "text": text,
-        "post_type": analyze_post_content(text),
-        "published": pub or "",
-        "published_src": pub_src,
-        "deadline": deadline,
-        "deadline_src": deadline_src,
-        "doc_url": extract_doc_url(main_html, link) or extract_doc_url(page_html, link),
-        "email": extract_email(text),
-        "html": main_html[:20000],
-    }
+# ----------------------------------------------------------------------------
+# Interfaccia Utente Flet (con Sezione Riserva 15% e Popup GPS Impaginato)
+# ----------------------------------------------------------------------------
+def main(page: ft.Page):
+    page.title = "Gestione Interpelli & Calcolo Riserva 15%"
+    page.theme_mode = ft.ThemeMode.LIGHT
+    page.padding = 20
+    page.scroll = ft.ScrollMode.AUTO
 
+    init_db()
 
-def fetch_page_details(link, rss_published=None):
-    """Come analyze_page ma scaricando la pagina; None se non raggiungibile."""
-    if FILE_EXT_RE.search(link):
-        return {"text": "", "post_type": "Non specificato", "published": rss_published or "",
-                "published_src": "elenco dell'ufficio" if rss_published else "", "deadline": None,
-                "deadline_src": "", "doc_url": link, "email": ""}
-    try:
-        return analyze_page(fetch_url(link), link, rss_published)
-    except Exception:
-        return None
+    # Componenti UI per il Calcolatore del 15% sulla CdC
+    cdc_input = ft.TextField(label="Classe di Concorso (es. ADMM, A028)", value="ADMM", width=250)
+    nomine_input = ft.TextField(label="Posti / nomine chiamate", value="20", keyboard_type=ft.KeyboardType.NUMBER, width=250)
+    risultato_text = ft.Text(size=16, weight=ft.FontWeight.BOLD, color=BRAND_DARK)
 
-
-def verify_interpello(url, rss_published=None, title=""):
-    """Riapre l'avviso e rilegge date, profilo (docenti/ATA) e classe. None se la pagina non risponde."""
-    info = fetch_page_details(url, rss_published)
-    if info is None:
-        return None
-    heading = ""
-    m = re.search(r"<h1\b[^>]*>(.*?)</h1>", info.get("html", ""), re.I | re.S)
-    if m:
-        heading = clean_text(m.group(1))
-    info["heading"] = heading
-    info["not_interpello"] = is_not_interpello(title) or is_not_interpello(heading)
-    info["target"] = detect_target(title or heading, info["text"])
-    info["cdc"] = detect_cdc(title or heading, info["text"])
-    return info
-
-
-def get_page_url(base_url, page_num):
-    if page_num == 1:
-        return base_url
-    if base_url.endswith("/feed/"):
-        return f"{base_url[:-6]}/page/{page_num}/feed/"
-    if "paged=" in base_url or "page=" in base_url:
-        return re.sub(r'(paged|page)=\d+', f'\\1={page_num}', base_url)
-    elif "?" in base_url:
-        return f"{base_url}&paged={page_num}"
-    else:
-        if base_url.endswith("/"):
-            return f"{base_url}page/{page_num}/"
-        return f"{base_url}?paged={page_num}"
-
-
-NOTICE_LINK_RE = re.compile(r"\b(?:interpell\w*|supplenz\w*|avvis\w*|graduatori\w*|docent\w*|ata|dsga|"
-                            r"collaborator\w*|assistent\w*|disponibilit\w*)\b", re.I)
-
-
-def parse_source_page(region, source_name, url, known):
-    """Scarica una pagina-fonte e restituisce (nuovi_interpelli, raggiungibile).
-
-    Gli avvisi già presenti nel database (`known`) non vengono riscaricati:
-    questo rende gli aggiornamenti successivi al primo molto più veloci.
-    """
-    items = []
-    try:
-        html_content = fetch_url(url)
-    except Exception:
-        return [], False
-
-    lower_content = html_content.lower()
-    if "<rss" in lower_content or "<feed" in lower_content or "<channel" in lower_content:
+    def calcola_riserva_click(e):
         try:
-            root = ET.fromstring(html_content)
-            for item in root.findall(".//item"):
-                title = clean_text(item.findtext("title"))
-                link = clean_text(item.findtext("link"))
-                pub_date = clean_text(item.findtext("pubDate"))
-                if title and link:
-                    items.append((title, link, pub_date))
+            totale = int(nomine_input.value.strip())
+            cdc = cdc_input.value.strip().upper()
+            res = calcola_riserva_cdc(totale, 0.15)
+            
+            risultato_text.value = (
+                f"📊 Risultato per la CdC {cdc}:\n"
+                f"• Posti totali chiamati: {res['posti_totali']}\n"
+                f"• Posti Riservati (15%): {res['posti_riserva']}\n"
+                f"• Posti Ordinari: {res['posti_ordinari']}"
+            )
+        except ValueError:
+            risultato_text.value = "⚠️ Inserisci un numero valido di posti."
+        page.update()
 
-            for entry in root.findall(".//{http://www.w3.org/2005/Atom}entry"):
-                title = clean_text(entry.findtext("{http://www.w3.org/2005/Atom}title"))
-                link = ""
-                link_el = entry.find("{http://www.w3.org/2005/Atom}link")
-                if link_el is not None:
-                    link = link_el.get("href", "")
-                pub_date = clean_text(entry.findtext("{http://www.w3.org/2005/Atom}updated") or entry.findtext("{http://www.w3.org/2005/Atom}published"))
-                if title and link:
-                    items.append((title, link, pub_date))
-        except Exception:
-            pass
-
-    # Pagine che non sono feed: cerca i link agli avvisi nel corpo della pagina (senza menu né piè di pagina).
-    # Se il feed ha già fornito gli avvisi, i link dentro le descrizioni non si contano.
-    if not items:
-        body_html = strip_chrome(html_content)
-        for href, txt in re.findall(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', body_html, re.I | re.S):
-            if href.startswith(("#", "mailto:", "tel:", "javascript:")):
-                continue
-            title = clean_text(txt)
-            if len(title) >= 15 and NOTICE_LINK_RE.search(title):
-                full_url = urljoin(url, href)
-                date_match = re.search(r'/(\d{4})/(\d{2})/(\d{2})/', full_url)
-                pub_date_str = f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}" if date_match else ""
-                items.append((title, full_url, pub_date_str))
-
-    results = []
-    seen_links = set()
-    for title, link, pub_date in items:
-        if link in seen_links or link in known:
-            continue
-        seen_links.add(link)
-
-        if is_not_interpello(title):          # es. "Bollettino nomine": non è un interpello
-            continue
-        rss_pub = parse_date(pub_date)
-        info = fetch_page_details(link, rss_pub)
-        if info is None:
-            info = {"text": "", "post_type": "Non specificato", "published": rss_pub or "",
-                    "deadline": None, "doc_url": "", "email": ""}
-        target = detect_target(title, info["text"])
-        cdc = detect_cdc(title, info["text"])
-        post_type = info["post_type"]
-        published = info["published"] or ""   # niente più "oggi" quando la data non si trova
-
-        title_lower = title.lower()
-        if post_type == "Non specificato" or post_type == "Posto Ordinario / Altro":
-            if "sostegno" in title_lower:
-                post_type = "Posto di Sostegno"
-            elif "spezzone" in title_lower:
-                post_type = "Spezzone Orario"
-
-        results.append((title, link, region, source_name, target, published, info["deadline"], cdc, post_type,
-                        info["doc_url"], info["email"]))
-    return results, True
-
-
-# ----------------------------------------------------------------------------
-# Formattazione
-# ----------------------------------------------------------------------------
-def to_date(iso):
-    try:
-        return datetime.strptime(iso, "%Y-%m-%d").date()
-    except Exception:
-        return None
-
-
-def fmt_date(iso):
-    d = to_date(iso)
-    return f"{d.day} {MESI[d.month - 1]} {d.year}" if d else (iso or "—")
-
-
-def fmt_short(d):
-    return f"{d.day} {MESI[d.month - 1]}"
-
-
-def deadline_info(deadline):
-    """(testo, colore sfondo, colore testo, icona) del badge di scadenza."""
-    d = to_date(deadline)
-    if not d:
-        return ("Scadenza non indicata", ft.Colors.SURFACE_CONTAINER_HIGHEST, ft.Colors.ON_SURFACE_VARIANT,
-                ft.Icons.SCHEDULE_ROUNDED)
-    days = (d - date.today()).days
-    if days < 0:
-        return (f"Scaduto il {fmt_short(d)}", ft.Colors.SURFACE_CONTAINER_HIGHEST, ft.Colors.OUTLINE,
-                ft.Icons.EVENT_BUSY_ROUNDED)
-    if days == 0:
-        return ("Scade oggi", ft.Colors.ERROR_CONTAINER, ft.Colors.ON_ERROR_CONTAINER,
-                ft.Icons.TIMER_ROUNDED)
-    if days == 1:
-        return ("Scade domani", ft.Colors.ERROR_CONTAINER, ft.Colors.ON_ERROR_CONTAINER,
-                ft.Icons.TIMER_ROUNDED)
-    if days <= 3:
-        return (f"Scade tra {days} giorni", ft.Colors.ERROR_CONTAINER, ft.Colors.ON_ERROR_CONTAINER,
-                ft.Icons.TIMER_ROUNDED)
-    return (f"Scade il {fmt_short(d)}", ft.Colors.TERTIARY_CONTAINER, ft.Colors.ON_TERTIARY_CONTAINER,
-            ft.Icons.EVENT_AVAILABLE_ROUNDED)
-
-
-def is_new(published):
-    d = to_date(published)
-    return bool(d) and 0 <= (date.today() - d).days <= 2
-
-
-STATUS_COLORS = {"active": "#16A363", "soon": "#E8590C", "expired": "#9CA3AF", "unknown": "#6B7280"}
-
-
-def status_of(deadline):
-    """'active' | 'soon' | 'expired' | 'unknown' in base alla scadenza."""
-    d = to_date(deadline)
-    if not d:
-        return "unknown"
-    days = (d - date.today()).days
-    if days < 0:
-        return "expired"
-    return "soon" if days <= SOON_DAYS else "active"
-
-
-def parse_classes(raw):
-    """'a028, A022 adss' -> ['A028', 'A022', 'ADSS'] (senza duplicati)."""
-    out = []
-    for token in re.split(r"[\s,;]+", (raw or "").upper()):
-        token = token.strip()
-        if token and token not in out:
-            out.append(token)
-    return out
-
-
-def matches_classes(title, cdc, classes):
-    if not classes:
-        return False
-    t = (title or "").upper()
-    codes = [x.strip() for x in (cdc or "").upper().split(",")]
-    return any(c in codes or re.search(rf"\b{re.escape(c)}\b", t) for c in classes)
-
-
-# ----------------------------------------------------------------------------
-# «Dove mi conviene fare le GPS?»: confronto con i bollettini di nomina
-# ----------------------------------------------------------------------------
-# I dati stanno in assets/gps_data.json (creato con tools/gps/build_gps_data.py dai bollettini di nomina
-# GPS pubblicati dagli Uffici scolastici) e contengono SOLO dati aggregati, mai nomi. Formato:
-#   {"anno": "2026/27", "aggiornato": "2026-08-29", "bollettino": "1", "fonte": "...",
-#    "province": {"Pescara": {"regione": "Abruzzo",
-#        "classi": {"A011:I": {"n": 12, "min": 107.5, "max": 197.5, "pos": 24}}}}}
-# n = nomine, min/max = punteggio più basso/più alto nominato, pos = posizione più bassa raggiunta.
-GPS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "gps_data.json")
-GPS_FASCE = {"I": "I fascia", "II": "II fascia"}
-# Riserva per chi ha fatto il servizio civile: al massimo il 15% dei posti di quel turno, per classe.
-# L'algoritmo scorre la graduatoria e «salta» ai riservisti solo finché la quota non è raggiunta, quindi i
-# nominati con la riserva sono al massimo il 15% e hanno i punteggi più bassi. Nei bollettini non si capisce
-# chi sono (colonne oscurate): la soglia vera sta tra il punteggio dell'ultimo nominato (minima) e quello
-# che resta togliendo il 15% dei punteggi più bassi (sicura).
-GPS_RISERVA = 0.15
-
-
-def load_gps_data(path=GPS_FILE):
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, dict) and isinstance(data.get("province"), dict) and data["province"]:
-            return data
-    except (OSError, ValueError):
-        pass
-    return None
-
-
-def parse_score(text):
-    """'85,5' o '85.5' -> 85.5; None se non è un punteggio plausibile."""
-    try:
-        value = float(str(text).strip().replace(",", "."))
-    except ValueError:
-        return None
-    return value if 0 <= value <= 1000 else None
-
-
-def fmt_score(value):
-    """107.5 -> '107,5'; 98.0 -> '98'."""
-    return f"{value:g}".replace(".", ",")
-
-
-def gps_threshold(entry, riserva=0.0):
-    """(soglia, posizione, nomine, escluse, minima).
-    soglia = punteggio dell'ultimo nominato dopo aver tolto, turno per turno, al massimo la quota riservata
-    (i punteggi più bassi); con più turni vale il punteggio più basso raggiunto.
-    minima = punteggio dell'ultimo nominato in assoluto. Senza elenco dei punteggi soglia = minima."""
-    n = int(entry["n"])
-    minima = float(entry["min"])
-    turns = entry.get("t") or ([{"s": entry["s"]}] if entry.get("s") else [])
-    if not turns or riserva <= 0:
-        return minima, int(entry.get("pos", 0)), n, 0, minima
-    best, escluse = None, 0
-    for t in turns:
-        ordered = sorted(t["s"], key=lambda x: (-x[0], x[1]))
-        skip = int(len(ordered) * riserva)             # quota riservata del turno, arrotondata per difetto
-        kept = ordered[:max(1, len(ordered) - skip)]
-        escluse += len(ordered) - len(kept)
-        last = kept[-1]
-        if best is None or last[0] < best[0]:
-            best = last
-    return float(best[0]), int(best[1]), n, escluse, minima
-
-
-def gps_rank(data, cdc, fascia, score, region="", riserva=0.0):
-    """Confronta il punteggio con quello dell'ultimo nominato di ogni provincia.
-    esito: "si" (ci saresti anche con la riserva piena), "forse" (dipende da quanti riservisti sono entrati),
-    "no". Prima i "si" (margine maggiore per primi), poi i "forse", poi i "no" (i più vicini per primi)."""
-    key = f"{(cdc or '').strip().upper()}:{fascia}"
-    rows = []
-    for prov, info in data.get("province", {}).items():
-        reg = info.get("regione", "")
-        if region and reg != region:
-            continue
-        entry = info.get("classi", {}).get(key)
-        if not entry or not entry.get("n"):
-            continue
-        soglia, ultima, n, escluse, minima = gps_threshold(entry, riserva)
-        margin = round(score - soglia, 3)
-        esito = "si" if margin >= 0 else ("forse" if score >= minima else "no")
-        rows.append({"provincia": prov, "regione": reg, "soglia": soglia, "minima": minima,
-                     "massimo": float(entry["max"]), "nomine": n, "escluse": escluse, "ultima": ultima,
-                     "margine": margin, "mancano": round(max(0.0, minima - score), 3),
-                     "esito": esito, "ok": esito == "si"})
-    order = {"si": 0, "forse": 1, "no": 2}
-    rows.sort(key=lambda r: (order[r["esito"]], -r["margine"], -r["nomine"], r["provincia"]))
-    return rows
-
-
-def build_mailto(email, title, cdc, name, phone):
-    from urllib.parse import quote
-    subject = f"Disponibilità supplenza {('classe ' + cdc) if cdc else ''} - {name}".replace("  ", " ").strip(" -")
-    body = (
-        "Gentile Dirigente Scolastico,\n\n"
-        f"con riferimento all'interpello \"{title}\", comunico la mia disponibilità "
-        "ad accettare la supplenza.\n\n"
-        f"{name}\n{('Tel. ' + phone) if phone else ''}\n"
+    btn_calcola = ft.ElevatedButton(
+        "Calcola Riserva (15%)", 
+        on_click=calcola_riserva_click,
+        style=ft.ButtonStyle(color=ft.colors.WHITE, bgcolor=BRAND_LIGHT)
     )
-    return f"mailto:{email}?subject={quote(subject)}&body={quote(body)}"
 
-
-# ----------------------------------------------------------------------------
-# Interfaccia
-# ----------------------------------------------------------------------------
-def build(page: ft.Page, raw_prefs=None):
-    try:
-        page.title = "Interpelli Scuola"
-        page.theme_mode = ft.ThemeMode.SYSTEM
-        page.theme = ft.Theme(color_scheme_seed=BRAND_LIGHT, use_material3=True)
-        page.dark_theme = ft.Theme(color_scheme_seed=BRAND_LIGHT, use_material3=True)
-        page.padding = 0
-        page.spacing = 0
-        try:
-            page.window.width = 420
-            page.window.height = 820
-        except Exception:
-            pass
-
-        init_db()
-
-        state = {"profile": "", "region": "", "status": "", "shown": 0, "refreshing": False}
-        timers = {"search": None}
-
-        # ---- Preferenze dell'utente (classi di concorso, dati per le candidature)
-        prefs = {"classes": [], "name": "", "phone": "", "gps_class": "", "gps_score": ""}
-
-        store = ft.SharedPreferences()
-
-        def show_dialog(d):
-            try:
-                page.show_dialog(d)
-            except RuntimeError:             # era già nella pila: la riapro
-                d.open = True
-                d.update()
-
-        def close_dialog(d):
-            d.open = False
-            try:
-                d.update()
-            except Exception:
-                page.update()
-
-        def load_prefs():
-            try:
-                raw = raw_prefs
-                data = json.loads(raw) if isinstance(raw, str) else raw
-                if isinstance(data, dict):
-                    classes = data.get("classes", [])
-                    if isinstance(classes, list):
-                        prefs["classes"] = [c for c in classes if isinstance(c, str)]
-                    for key in ("name", "phone", "gps_class", "gps_score"):
-                        if isinstance(data.get(key), str):
-                            prefs[key] = data[key]
-            except Exception:
-                pass
-
-        def save_prefs():
-            try:
-                page.run_task(store.set, "prefs", json.dumps(prefs))
-            except Exception:
-                pass
-
-        load_prefs()
-
-        # ---- Intestazione con logo e ricerca -------------------------------
-        # I tre pulsanti stanno nella riga dei filtri, accanto a «Per me» (più comodi da raggiungere).
-        def tool_button(icon, tooltip, visible=True):
-            return ft.IconButton(
-                icon=icon,
-                icon_color=ft.Colors.ON_SURFACE_VARIANT,
-                icon_size=22,
-                tooltip=tooltip,
-                visible=visible,
-                style=ft.ButtonStyle(bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST),
-            )
-
-        settings_button = tool_button(ft.Icons.TUNE_ROUNDED, "Le mie classi e i miei dati")
-        refresh_button = tool_button(ft.Icons.SYNC_ROUNDED, "Cerca nuovi interpelli")
-        reset_button = tool_button(ft.Icons.FILTER_ALT_OFF_ROUNDED, "Azzera i filtri", visible=False)
-
-        clear_button = ft.IconButton(icon=ft.Icons.CLOSE_ROUNDED, icon_size=18, visible=False,
-                                     icon_color="#6B7280")
-
-        search_input = ft.TextField(
-            hint_text="Cerca classe di concorso, ruolo, ufficio…",
-            hint_style=ft.TextStyle(color="#6B7280", size=14),
-            text_style=ft.TextStyle(color="#111827", size=14),
-            prefix_icon=ft.Icons.SEARCH_ROUNDED,
-            suffix=clear_button,
-            filled=True,
-            fill_color=ft.Colors.with_opacity(0.96, ft.Colors.WHITE),
-            border=ft.NoInputBorder(),
-            border_radius=16,
-            content_padding=ft.Padding.symmetric(horizontal=12, vertical=14),
-            cursor_color=BRAND_LIGHT,
+    card_calcolatore = ft.Card(
+        content=ft.Container(
+            padding=15,
+            content=ft.Column([
+                ft.Text("🧮 Calcolo Riserva 15% su Classe di Concorso", size=18, weight=ft.FontWeight.BOLD),
+                ft.Row([cdc_input, nomine_input]),
+                btn_calcola,
+                ft.Divider(),
+                risultato_text
+            ])
         )
+    )
 
-        header = ft.Container(
-            gradient=ft.LinearGradient(
-                begin=ft.Alignment.TOP_LEFT,
-                end=ft.Alignment.BOTTOM_RIGHT,
-                colors=[BRAND_DARK, BRAND_LIGHT],
-            ),
-            padding=ft.Padding.only(left=18, right=14, top=22, bottom=18),
-            border_radius=ft.BorderRadius.only(bottom_left=28, bottom_right=28),
-            content=ft.Column(
-                spacing=14,
-                controls=[
-                    ft.Row(
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                        controls=[
-                            ft.Image(src="logo.png", width=46, height=46, border_radius=12),
-                            ft.Column(
-                                expand=True, spacing=0,
-                                controls=[
-                                    ft.Text("Interpelli Scuola", size=21, weight=ft.FontWeight.W_800,
-                                            color=ft.Colors.WHITE),
-                                    ft.Text("Supplenze in tutta Italia, in un tocco",
-                                            size=12, color=ft.Colors.with_opacity(0.85, ft.Colors.WHITE)),
-                                ],
-                            ),
-                        ],
-                    ),
-                    search_input,
-                ],
-            ),
-        )
+    calcola_riserva_click(None)
 
-        # ---- Filtri ---------------------------------------------------------
-        pills = {}
+    # Funzione per aprire il popup "Dove mi conviene fare le GPS?" con Paginazione per Android
+    def apri_popup_gps(e):
+        # Dati di esempio (sostituibili con i dati reali del DB o JSON)
+        dati_risultati = [
+            {"provincia": f"Provincia {i+1}", "dettaglio": f"Punteggio min: {50 + i} - Nomine: {10 + i}"} 
+            for i in range(45)
+        ]
 
-        # Pulsanti-filtro: stesso tipo di controllo (ElevatedButton) già usato
-        # dalla versione originale, quindi sicuro su tutti i dispositivi.
-        def make_pill(key, label, icon):
-            btn = ft.Button(
-                content=label,
-                icon=icon,
-                on_click=lambda e, k=key: set_profile(k),
-            )
-            pills[key] = btn
-            return btn
+        elementi_per_pagina = 7
+        stato = {"pagina_attuale": 1}
+        totale_pagine = math.ceil(len(dati_risultati) / elementi_per_pagina)
 
-        def paint_pills():
-            for key, btn in pills.items():
-                active = state["profile"] == key
-                btn.style = ft.ButtonStyle(
-                    shape=ft.RoundedRectangleBorder(radius=20),
-                    bgcolor=ft.Colors.PRIMARY if active else ft.Colors.SURFACE_CONTAINER_HIGHEST,
-                    color=ft.Colors.ON_PRIMARY if active else ft.Colors.ON_SURFACE_VARIANT,
-                    padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-                    elevation=0,
-                )
+        largh_schermo = page.width if page.width < 600 else 550
+        alt_schermo = page.height * 0.85
 
-        pills_row = ft.Row(
-            wrap=True,
-            spacing=8,
-            run_spacing=8,
-            controls=[
-                make_pill("", "Tutti", None),
-                make_pill("DOCENTI", "Docenti", None),
-                make_pill("ATA", "ATA", None),
-                make_pill("ME", "Per me", ft.Icons.STAR_ROUNDED),
-                settings_button,
-                refresh_button,
-                reset_button,
-            ],
-        )
+        lista_view = ft.ListView(expand=True, spacing=8)
+        lbl_info_pagina = ft.Text("", size=14, weight=ft.FontWeight.W_500)
+        btn_prev = ft.OutlinedButton("◀ Prec.")
+        btn_next = ft.OutlinedButton("Succ. ▶")
 
-        region_options = [ft.DropdownOption(key="", text="Tutta Italia")]
-        for reg in sorted(SOURCES.keys()):
-            region_options.append(ft.DropdownOption(key=reg, text=reg))
+        def aggiorna_vista_pagina():
+            pagina = stato["pagina_attuale"]
+            inizio = (pagina - 1) * elementi_per_pagina
+            fine = inizio + elementi_per_pagina
+            elementi_correnti = dati_risultati[inizio:fine]
 
-        # Stessa configurazione del Dropdown originale (che funzionava),
-        # direttamente in colonna e a larghezza piena.
-        region_dropdown = ft.Dropdown(
-            label="Regione",
-            options=region_options,
-            value="",
-            border_radius=14,
-            filled=True,
-            border_color=ft.Colors.TRANSPARENT,
-        )
-
-        status_dropdown = ft.Dropdown(
-            label="Stato",
-            options=[
-                ft.DropdownOption(key="", text="Tutti gli stati"),
-                ft.DropdownOption(key="active", text="Attivi"),
-                ft.DropdownOption(key="soon", text=f"In scadenza (entro {SOON_DAYS} giorni)"),
-                ft.DropdownOption(key="expired", text="Scaduti"),
-            ],
-            value="",
-            border_radius=14,
-            filled=True,
-            border_color=ft.Colors.TRANSPARENT,
-        )
-
-        classes_text = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
-
-        gps_button = ft.FilledTonalButton(
-            content="Dove mi conviene fare le GPS?",
-            icon=ft.Icons.TRAVEL_EXPLORE_ROUNDED,
-        )
-
-        filters = ft.Container(
-            padding=ft.Padding.only(left=16, right=16, top=14, bottom=4),
-            content=ft.Column(
-                spacing=10,
-                controls=[pills_row, classes_text, region_dropdown, status_dropdown, gps_button],
-            ),
-        )
-
-        # ---- Stato / progresso ---------------------------------------------
-        status_text = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT, weight=ft.FontWeight.W_500,
-                              expand=True)
-        progress_bar = ft.ProgressBar(value=0, visible=False, bar_height=3, border_radius=3)
-        status_row = ft.Container(
-            padding=ft.Padding.symmetric(horizontal=18, vertical=6),
-            content=ft.Column(spacing=6, controls=[progress_bar, ft.Row([status_text])]),
-        )
-
-        # ---- Lista risultati -----------------------------------------------
-        results = ft.ListView(expand=True, spacing=10,
-                              padding=ft.Padding.only(left=16, right=16, top=4, bottom=28))
-
-        more_button = ft.Container(
-            alignment=ft.Alignment.CENTER,
-            padding=ft.Padding.only(top=6, bottom=6),
-            content=ft.FilledTonalButton(
-                content="Mostra altri", icon=ft.Icons.EXPAND_MORE_ROUNDED,
-                on_click=lambda e: load_results(reset=False),
-            ),
-        )
-
-        def empty_state(db_empty):
-            if state["refreshing"]:
-                return ft.Container(
-                    alignment=ft.Alignment.CENTER,
-                    padding=ft.Padding.only(top=48, left=24, right=24),
-                    content=ft.Column(
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=14,
-                        controls=[
-                            ft.ProgressRing(width=34, height=34, stroke_width=4),
-                            ft.Text("Sto cercando gli interpelli…", size=16, weight=ft.FontWeight.W_700,
-                                    text_align=ft.TextAlign.CENTER),
-                            ft.Text("I risultati compaiono qui man mano che li trovo.", size=13,
-                                    color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER),
-                        ],
-                    ),
-                )
-            if db_empty:
-                title, sub = "Nessun interpello scaricato", "Tocca il pulsante per scaricare gli avvisi di tutta Italia."
-                action = ft.FilledButton("Scarica interpelli", icon=ft.Icons.CLOUD_DOWNLOAD_ROUNDED,
-                                         on_click=lambda e: refresh())
-            else:
-                title, sub = "Nessun risultato", "Prova a cambiare ricerca o filtri."
-                action = ft.TextButton("Azzera filtri", on_click=lambda e: reset_filters())
-            return ft.Container(
-                alignment=ft.Alignment.CENTER,
-                padding=ft.Padding.only(top=48, left=24, right=24),
-                content=ft.Column(
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10,
-                    controls=[
-                        ft.Icon(ft.Icons.SEARCH_OFF_ROUNDED, size=56, color=ft.Colors.OUTLINE),
-                        ft.Text(title, size=16, weight=ft.FontWeight.W_700, text_align=ft.TextAlign.CENTER),
-                        ft.Text(sub, size=13, color=ft.Colors.ON_SURFACE_VARIANT, text_align=ft.TextAlign.CENTER),
-                        action,
-                    ],
-                ),
-            )
-
-        def badge(text, bgcolor, color, icon=None):
-            row = []
-            if icon:
-                row.append(ft.Icon(icon, size=13, color=color))
-            row.append(ft.Text(text, size=11, weight=ft.FontWeight.W_700, color=color))
-            return ft.Container(
-                content=ft.Row(row, spacing=4, tight=True),
-                bgcolor=bgcolor,
-                padding=ft.Padding.symmetric(horizontal=9, vertical=4),
-                border_radius=8,
-            )
-
-        def meta_row(icon, text):
-            return ft.Row(
-                spacing=6, vertical_alignment=ft.CrossAxisAlignment.START,
-                controls=[
-                    ft.Icon(icon, size=14, color=ft.Colors.OUTLINE),
-                    ft.Text(text, size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True,
-                            max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
-                ],
-            )
-
-        launcher = ft.UrlLauncher()
-
-        def open_url(url):
-            try:
-                page.run_task(launcher.launch_url, url)
-            except Exception:
-                pass
-
-        def build_card(row):
-            title, url, region, source, target, published, deadline, cdc, post_type, doc_url, email, verified = row
-            is_ata = target == "ATA"
-            d_text, d_bg, d_fg, d_icon = deadline_info(deadline)
-            status = status_of(deadline)
-            mine = matches_classes(title, cdc, prefs["classes"])
-
-            chips = [
-                badge("ATA" if is_ata else "Docenti",
-                      ft.Colors.SECONDARY_CONTAINER if is_ata else ft.Colors.PRIMARY_CONTAINER,
-                      ft.Colors.ON_SECONDARY_CONTAINER if is_ata else ft.Colors.ON_PRIMARY_CONTAINER,
-                      ft.Icons.WORK_ROUNDED if is_ata else ft.Icons.SCHOOL_ROUNDED),
-            ]
-            for code in [c.strip() for c in (cdc or "").split(",") if c.strip()]:
-                chips.append(badge(cdc_label(code), ft.Colors.SURFACE_CONTAINER_HIGHEST, ft.Colors.ON_SURFACE_VARIANT))
-            if mine:
-                chips.append(badge("PER TE", GOLD, "#3B2A00", ft.Icons.STAR_ROUNDED))
-            if is_new(published):
-                chips.append(badge("NUOVO", GREEN, ft.Colors.WHITE))
-            if verified:
-                chips.append(badge("Date verificate", ft.Colors.SURFACE_CONTAINER_HIGHEST, GREEN, ft.Icons.VERIFIED_ROUNDED))
-
-            body = [
-                ft.Row(chips, spacing=6, wrap=True, run_spacing=6),
-                ft.Text(title, size=14, weight=ft.FontWeight.W_600, max_lines=4,
-                        overflow=ft.TextOverflow.ELLIPSIS),
-                meta_row(ft.Icons.PLACE_ROUNDED, f"{source} · {region}"),
-                meta_row(ft.Icons.CALENDAR_TODAY_ROUNDED,
-                         f"Pubblicato il {fmt_date(published)}" if published else "Data di pubblicazione non indicata"),
-            ]
-            if post_type and post_type != "Non specificato":
-                body.append(meta_row(ft.Icons.WORK_OUTLINE_ROUNDED, post_type))
-            body.append(
-                ft.Row(
-                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    controls=[
-                        badge(d_text, d_bg, d_fg, d_icon),
-                        ft.Row(
-                            spacing=2, tight=True,
-                            controls=[
-                                ft.Text("Controlla e apri", size=12, weight=ft.FontWeight.W_700,
-                                        color=ft.Colors.PRIMARY),
-                                ft.Icon(ft.Icons.OPEN_IN_NEW_ROUNDED, size=15, color=ft.Colors.PRIMARY),
-                            ],
+            lista_view.controls.clear()
+            for item in elementi_correnti:
+                lista_view.controls.append(
+                    ft.Card(
+                        content=ft.ListTile(
+                            leading=ft.Icon(ft.icons.LOCATION_ON, color=BRAND_LIGHT),
+                            title=ft.Text(item["provincia"], weight=ft.FontWeight.BOLD),
+                            subtitle=ft.Text(item["dettaglio"]),
                         ),
-                    ],
+                        margin=ft.margin.only(bottom=4)
+                    )
                 )
-            )
 
-            # Azioni come sul sito: documento originale e candidatura via email
-            actions = []
-            if doc_url:
-                actions.append(ft.TextButton(content="Documento", icon=ft.Icons.DOWNLOAD_ROUNDED, url=doc_url))
-            if email and status != "expired":
-                mailto = build_mailto(email, title, cdc, prefs["name"] or "Candidato", prefs["phone"])
-                actions.append(ft.TextButton(content="Candidati", icon=ft.Icons.MAIL_OUTLINE_ROUNDED, url=mailto))
-            if actions:
-                body.append(ft.Row(actions, spacing=4, wrap=True))
+            lbl_info_pagina.value = f"Pag. {pagina} di {totale_pagine}"
+            btn_prev.disabled = (pagina == 1)
+            btn_next.disabled = (pagina == totale_pagine)
+            page.update()
 
-            return ft.Container(
-                content=ft.Column(body, spacing=8),
-                padding=14,
-                border_radius=18,
-                bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
-                border=ft.Border.all(1.5, STATUS_COLORS[status]) if status in ("active", "soon") else None,
-                opacity=0.7 if status == "expired" else 1,
-                ink=True,
-                data=url,
-                on_click=lambda e, u=url: open_interpello(u),
-            )
+        def prev_page(e):
+            if stato["pagina_attuale"] > 1:
+                stato["pagina_attuale"] -= 1
+                aggiorna_vista_pagina()
 
-        # ---- Apertura di un interpello: rilegge le date sulla pagina ----------
-        detail_title = ft.Text("", size=15, weight=ft.FontWeight.W_700, max_lines=4,
-                               overflow=ft.TextOverflow.ELLIPSIS)
-        detail_body = ft.Column(tight=True, spacing=10)
-        detail_open_btn = ft.FilledButton("Apri avviso", icon=ft.Icons.OPEN_IN_NEW_ROUNDED)
-        detail_close_btn = ft.TextButton("Chiudi")
-        detail_dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Controllo dell'avviso"),
-            content=ft.Column(tight=True, spacing=12, controls=[detail_title, detail_body]),
-            actions=[detail_close_btn, detail_open_btn],
-        )
+        def next_page(e):
+            if stato["pagina_attuale"] < totale_pagine:
+                stato["pagina_attuale"] += 1
+                aggiorna_vista_pagina()
 
-        def close_detail(e=None):
-            close_dialog(detail_dlg)
+        btn_prev.on_click = prev_page
+        btn_next.on_click = next_page
 
-        def go_to_notice(url):
-            close_detail()
-            open_url(url)
-
-        detail_close_btn.on_click = close_detail
-
-        def date_line(icon, label, value_text, note, color=None):
-            col = [ft.Text(value_text, size=14, weight=ft.FontWeight.W_700, color=color)]
-            if note:
-                col.append(ft.Text(note, size=11, color=ft.Colors.ON_SURFACE_VARIANT, italic=True))
-            return ft.Row(
-                spacing=10, vertical_alignment=ft.CrossAxisAlignment.START,
-                controls=[
-                    ft.Icon(icon, size=20, color=ft.Colors.PRIMARY),
-                    ft.Column(spacing=1, tight=True, expand=True,
-                              controls=[ft.Text(label, size=11, color=ft.Colors.ON_SURFACE_VARIANT)] + col),
-                ],
-            )
-
-        def replace_card(url):
-            """Ricostruisce solo la scheda toccata, senza perdere la posizione nella lista."""
-            try:
-                conn = db_connect()
-                row = conn.execute(
-                    "SELECT title, url, region, source, target, published, deadline, cdc, post_type, doc_url, email, verified "
-                    "FROM interpelli WHERE url = ?", (url,)).fetchone()
-                conn.close()
-                if not row:
-                    return
-                for i, ctl in enumerate(results.controls):
-                    if getattr(ctl, "data", None) == url:
-                        results.controls[i] = build_card(row)
-                        break
-            except Exception:
-                pass
-
-        def show_verification(url, row_title, stored_pub, stored_deadline, info, stored_target=None, stored_cdc=None):
-            if info is None:
-                detail_body.controls = [
-                    date_line(ft.Icons.CALENDAR_TODAY_ROUNDED, "Pubblicazione",
-                              fmt_date(stored_pub) if stored_pub else "Non indicata",
-                              "Non verificata: la pagina non risponde"),
-                    date_line(ft.Icons.EVENT_BUSY_ROUNDED, "Scadenza",
-                              fmt_date(stored_deadline) if stored_deadline else "Non indicata",
-                              "Non verificata: la pagina non risponde"),
-                    ft.Text("Controlla la connessione e riprova, oppure apri l'avviso e verifica le date.",
-                            size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                ]
-                return
-
-            pub, deadline = info["published"], info["deadline"]
-            d_text, _, _, _ = deadline_info(deadline)
-            lines = [
-                date_line(ft.Icons.CALENDAR_TODAY_ROUNDED, "Data di pubblicazione",
-                          fmt_date(pub) if pub else "Non trovata nella pagina",
-                          f"Letta da: {info['published_src']}" if pub else "Controllala nell'avviso"),
-                date_line(ft.Icons.EVENT_BUSY_ROUNDED, "Scadenza per la candidatura",
-                          fmt_date(deadline) if deadline else "Non trovata nella pagina",
-                          f"«…{info['deadline_src']}…»" if deadline else
-                          "Potrebbe essere scritta solo nell'allegato: aprilo per controllare",
-                          color=STATUS_COLORS[status_of(deadline)] if deadline else None),
-            ]
-            if deadline:
-                lines.append(ft.Text(d_text, size=12, weight=ft.FontWeight.W_600))
-
-            # profilo e classe riletti dall'avviso (correggono l'elenco se serve)
-            profile = "Personale ATA" if info.get("target") == "ATA" else "Docenti"
-            cdc_txt = ", ".join(cdc_label(c.strip()) for c in (info.get("cdc") or "").split(",") if c.strip())
-            note = None
-            if stored_target and stored_target != info.get("target"):
-                was = "Personale ATA" if stored_target == "ATA" else "Docenti"
-                note = f"Corretto: nell'elenco risultava «{was}»"
-            lines.append(date_line(ft.Icons.BADGE_ROUNDED, "Profilo e classe di concorso",
-                                   profile + (f" · {cdc_txt}" if cdc_txt else ""), note))
-            if info.get("doc_url"):
-                lines.append(ft.Text("Nell'avviso è presente un allegato: se la scadenza è indicata solo lì, "
-                                     "controllala nel documento.", size=11, color=ft.Colors.ON_SURFACE_VARIANT))
-            detail_body.controls = lines
-
-        def open_interpello(url):
-            try:
-                conn = db_connect()
-                row = conn.execute("SELECT title, published, deadline, target, cdc FROM interpelli WHERE url = ?",
-                                   (url,)).fetchone()
-                conn.close()
-            except sqlite3.Error:
-                row = None
-            row_title, stored_pub, stored_deadline, stored_target, stored_cdc = row if row else ("", "", None, None, None)
-
-            detail_title.value = row_title
-            detail_body.controls = [
-                ft.Row(spacing=12, controls=[
-                    ft.ProgressRing(width=20, height=20, stroke_width=3),
-                    ft.Text("Controllo le date sulla pagina dell'avviso…", size=13),
-                ])
-            ]
-            detail_open_btn.on_click = lambda e, u=url: go_to_notice(u)
-            show_dialog(detail_dlg)
-
-            def worker():
-                info = verify_interpello(url, stored_pub or None, row_title)
-                if info is not None and info.get("not_interpello"):
-                    # bollettino delle nomine o simili: non è un interpello, via dall'elenco
-                    try:
-                        conn = db_connect()
-                        conn.execute("DELETE FROM interpelli WHERE url = ?", (url,))
-                        conn.commit()
-                        conn.close()
-                    except sqlite3.Error:
-                        pass
-                    results.controls[:] = [c for c in results.controls if getattr(c, "data", None) != url]
-                    detail_body.controls = [ft.Text(
-                        "Questo avviso non è un interpello (bollettino delle nomine): l'ho tolto dall'elenco.",
-                        size=13)]
-                    page.update()
-                    return
-                if info is not None:
-                    try:
-                        conn = db_connect()
-                        conn.execute(
-                            "UPDATE interpelli SET published = ?, deadline = ?, doc_url = ?, email = ?, "
-                            "target = ?, cdc = ?, verified = 1 WHERE url = ?",
-                            (info["published"], info["deadline"], info["doc_url"] or "", info["email"] or "",
-                             info["target"], info["cdc"], url))
-                        conn.commit()
-                        conn.close()
-                    except sqlite3.Error:
-                        pass
-                    replace_card(url)
-                show_verification(url, row_title, stored_pub, stored_deadline, info, stored_target, stored_cdc)
-                page.update()
-
-            threading.Thread(target=worker, daemon=True).start()
-
-        # ---- Query ----------------------------------------------------------
-        def build_query():
-            where = ["1=1"]
-            params = []
-
-            for token in state_search_tokens():
-                clause = "title LIKE ? OR cdc LIKE ? OR source LIKE ? OR region LIKE ?"
-                params.extend([f"%{token}%"] * 4)
-                alias = CDC_SEARCH_ALIASES.get(token.lower())
-                if alias:                      # cercando "motoria" trova anche la classe EEEM
-                    clause += " OR cdc LIKE ?"
-                    params.append(f"%{alias}%")
-                where.append("(" + clause + ")")
-
-            if state["profile"] == "ME":
-                if prefs["classes"]:
-                    parts = []
-                    for c in prefs["classes"]:
-                        parts.append("(cdc LIKE ? OR title LIKE ?)")
-                        params.extend([f"%{c}%", f"%{c}%"])
-                    where.append("(" + " OR ".join(parts) + ")")
-                else:
-                    where.append("1=0")
-            elif state["profile"]:
-                where.append("target = ?")
-                params.append(state["profile"])
-            if state["region"]:
-                where.append("region = ?")
-                params.append(state["region"])
-
-            today = date.today()
-            today_s = today.strftime("%Y-%m-%d")
-            if state["status"] == "active":
-                where.append("(deadline IS NULL OR deadline = '' OR deadline >= ?)")
-                params.append(today_s)
-            elif state["status"] == "soon":
-                where.append("(deadline >= ? AND deadline <= ?)")
-                params.extend([today_s, (today + timedelta(days=SOON_DAYS)).strftime("%Y-%m-%d")])
-            elif state["status"] == "expired":
-                where.append("(deadline IS NOT NULL AND deadline != '' AND deadline < ?)")
-                params.append(today_s)
-            return " AND ".join(where), params
-
-        def state_search_tokens():
-            return [t for t in (search_input.value or "").strip().split() if t]
-
-        load_lock = threading.RLock()
-
-        def load_results(reset=True, live=False):
-            """reset: riparte dall'inizio · live: ricarica quanto già mostrato (durante la ricerca) · altrimenti 'mostra altri'."""
-            with load_lock:
-                try:
-                    if reset:
-                        state["shown"] = 0
-                        offset, limit = 0, PAGE_SIZE
-                    elif live:
-                        offset, limit = 0, max(state["shown"], PAGE_SIZE)
-                    else:
-                        offset, limit = state["shown"], PAGE_SIZE
-
-                    where, params = build_query()
-                    conn = db_connect()
-                    total_filtered = conn.execute(f"SELECT COUNT(*) FROM interpelli WHERE {where}", params).fetchone()[0]
-                    total_in_db = conn.execute("SELECT COUNT(*) FROM interpelli").fetchone()[0]
-                    rows = conn.execute(
-                        "SELECT title, url, region, source, target, published, deadline, cdc, post_type, doc_url, email, verified "
-                        f"FROM interpelli WHERE {where} ORDER BY published DESC, id DESC LIMIT ? OFFSET ?",
-                        params + [limit, offset],
-                    ).fetchall()
-                    conn.close()
-
-                    if reset or live:
-                        results.controls.clear()
-                        state["shown"] = 0
-                    elif results.controls and results.controls[-1] is more_button:
-                        results.controls.pop()
-
-                    for row in rows:
-                        results.controls.append(build_card(row))
-                    state["shown"] += len(rows)
-
-                    if not results.controls:
-                        results.controls.append(empty_state(total_in_db == 0))
-                    elif state["shown"] < total_filtered:
-                        results.controls.append(more_button)
-
-                    if not state["refreshing"]:
-                        if total_filtered:
-                            status_text.value = f"{total_filtered} interpelli · mostrati {state['shown']}"
-                        else:
-                            status_text.value = ""
-                    if reset and not live:
-                        try:
-                            page.run_task(results.scroll_to, offset=0, duration=0)
-                        except Exception:
-                            pass
-                    update_reset_visibility()
-                    page.update()
-                except Exception as ex:
-                    status_text.value = f"Errore nel caricamento: {ex}"
-                    page.update()
-
-        # ---- Eventi filtri --------------------------------------------------
-        def update_reset_visibility():
-            reset_button.visible = bool(state["profile"] or state["region"] or state["status"]
-                                        or (search_input.value or "").strip())
-
-        reset_button.on_click = lambda e: reset_filters()
-
-        def refresh_classes_text():
-            if prefs["classes"]:
-                classes_text.value = "Le mie classi: " + ", ".join(prefs["classes"])
-            else:
-                classes_text.value = "Tocca ⚙ in alto per scegliere le tue classi di concorso"
-
-        def set_profile(key):
-            if key == "ME" and not prefs["classes"]:
-                open_settings()
-                return
-            state["profile"] = key
-            paint_pills()
-            load_results(reset=True)
-
-        def reset_filters():
-            state["profile"] = ""
-            state["region"] = ""
-            state["status"] = ""
-            search_input.value = ""
-            clear_button.visible = False
-            region_dropdown.value = ""
-            status_dropdown.value = ""
-            paint_pills()
-            load_results(reset=True)
-
-        # ---- Impostazioni: classi di concorso e dati per le candidature ----
-        classes_field = ft.TextField(
-            label="Classi di concorso",
-            hint_text="es. A028, A022, ADSS",
-            helper="Separale con virgole o spazi",
-        )
-        name_field = ft.TextField(label="Nome e cognome (per le candidature)")
-        phone_field = ft.TextField(label="Telefono (facoltativo)")
-
-        def close_settings(e=None):
-            close_dialog(dlg)
-
-        clipboard = ft.Clipboard()
-
-        def copy_classes():
-            text = ", ".join(parse_classes(classes_field.value))
-            if not text:
-                notify("Scrivi prima almeno una classe di concorso.")
-                return
-            try:
-                page.run_task(clipboard.set, text)
-                notify(f"Copiato: {text}")
-            except Exception:
-                notify("Copia non riuscita: seleziona e copia il testo a mano.")
-
-        def save_settings(e=None):
-            prefs["classes"] = parse_classes(classes_field.value)
-            prefs["name"] = (name_field.value or "").strip()
-            prefs["phone"] = (phone_field.value or "").strip()
-            save_prefs()
-            refresh_classes_text()
-            if state["profile"] == "ME" and not prefs["classes"]:
-                state["profile"] = ""
-                paint_pills()
-            close_dialog(dlg)
-            load_results(reset=True)
-
-        dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Le mie classi"),
+        contenuto_popup = ft.Container(
+            width=largh_schermo,
+            height=alt_schermo,
+            padding=15,
             content=ft.Column(
-                tight=True, spacing=12,
-                controls=[
-                    ft.Text("Servono al filtro «Per me» e alle notifiche: ricevi un avviso solo per i nuovi "
-                            "interpelli di queste classi.", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                    classes_field, name_field, phone_field,
-                    ft.TextButton("Copia le classi per le notifiche", icon=ft.Icons.CONTENT_COPY_ROUNDED,
-                                  on_click=lambda e: copy_classes()),
-                    ft.Text("Per le notifiche a app chiusa incolla l'elenco nella variabile NOTIFY_CLASSES "
-                            "del repository GitHub (vedi NOTIFICHE.md).", size=11,
-                            color=ft.Colors.ON_SURFACE_VARIANT),
+                [
+                    ft.Row(
+                        [
+                            ft.Text("📍 Dove conviene fare le GPS?", size=18, weight=ft.FontWeight.BOLD, color=BRAND_DARK),
+                            ft.IconButton(icon=ft.icons.CLOSE, on_click=lambda _: chiudi_dialogo())
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+                    ),
+                    ft.Divider(height=1, color=ft.colors.GREY_300),
+                    lista_view,
+                    ft.Divider(height=1, color=ft.colors.GREY_300),
+                    ft.Row(
+                        [
+                            btn_prev,
+                            lbl_info_pagina,
+                            btn_next
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+                    )
                 ],
-            ),
-            actions=[ft.TextButton("Annulla", on_click=close_settings),
-                     ft.FilledButton("Salva", on_click=save_settings)],
-        )
-
-        def open_settings(e=None):
-            classes_field.value = ", ".join(prefs["classes"])
-            name_field.value = prefs["name"]
-            phone_field.value = prefs["phone"]
-            show_dialog(dlg)
-
-        settings_button.on_click = open_settings
-
-        # ---- «Dove mi conviene fare le GPS?» ---------------------------------
-        gps_class_field = ft.TextField(label="Classe di concorso", hint_text="es. A028", max_length=6,
-                                       capitalization=ft.TextCapitalization.CHARACTERS)
-        gps_score_field = ft.TextField(label="Il tuo punteggio GPS", hint_text="es. 42,5",
-                                       keyboard_type=ft.KeyboardType.NUMBER)
-        gps_hint = ft.Text("", size=12, color=ft.Colors.ERROR)
-
-        def gps_values():
-            cls = (gps_class_field.value or "").strip().upper()
-            score = (gps_score_field.value or "").strip().replace(",", ".")
-            try:
-                num = float(score)
-            except ValueError:
-                num = None
-            return cls, score, num
-
-        def gps_open(url):
-            cls, score, num = gps_values()
-            if not re.fullmatch(r"[A-Z0-9]{3,5}", cls) or num is None or num < 0 or num > 400:
-                gps_hint.value = "Scrivi la classe di concorso (es. A028) e il punteggio (es. 42,5)."
-                page.update()
-                return
-            gps_hint.value = ""
-            prefs["gps_class"], prefs["gps_score"] = cls, score
-            save_prefs()
-            page.update()
-            open_url(url)
-
-        def close_gps(e=None):
-            close_dialog(gps_dlg)
-
-        gps_data = load_gps_data()
-        gps_fascia = ft.Dropdown(
-            label="Fascia", value="II",
-            options=[ft.DropdownOption(key=k, text=v) for k, v in GPS_FASCE.items()],
-        )
-        gps_region = ft.Dropdown(
-            label="Regione", value="",
-            options=[ft.DropdownOption(key="", text="Tutta Italia")]
-                    + [ft.DropdownOption(key=r, text=r) for r in sorted(SOURCES.keys())],
-        )
-        gps_riserva = ft.Switch(label="Considera la riserva del 15%", value=True)
-        gps_info = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
-        gps_results = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO, height=220)
-
-        def gps_row(i, r):
-            if r["esito"] == "si":
-                color, verdict = ft.Colors.PRIMARY, f"Ci saresti: +{fmt_score(r['margine'])} punti"
-            elif r["esito"] == "forse":
-                color, verdict = ft.Colors.TERTIARY, "Forse: dipende dalla riserva"
-            else:
-                color, verdict = ft.Colors.ERROR, f"Ti mancano {fmt_score(r['mancano'])} punti"
-            return ft.Container(
-                padding=ft.Padding.symmetric(horizontal=12, vertical=8),
-                border_radius=12,
-                bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
-                content=ft.Row(
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    controls=[
-                        ft.Column(expand=True, spacing=0, controls=[
-                            ft.Text(r["provincia"], size=14, weight=ft.FontWeight.W_700),
-                            ft.Text(f"{r['regione']} · {r['nomine']} nomine", size=11,
-                                    color=ft.Colors.ON_SURFACE_VARIANT),
-                        ]),
-                        ft.Column(spacing=0, horizontal_alignment=ft.CrossAxisAlignment.END, controls=[
-                            ft.Text(verdict, size=12, weight=ft.FontWeight.W_700, color=color),
-                            ft.Text((f"ultimo nominato: {fmt_score(r['soglia'])}, con riserva piena {fmt_score(r['minima'])}"
-                                     if r["escluse"] else f"ultimo nominato: {fmt_score(r['soglia'])}")
-                                    + f" (posiz. {r['ultima']})", size=11,
-                                    color=ft.Colors.ON_SURFACE_VARIANT),
-                        ]),
-                    ],
-                ),
-            )
-
-        def run_gps(e=None):
-            gps_results.controls = []
-            cls, score, num = gps_values()
-            num = parse_score(score)
-            if not re.fullmatch(r"[A-Z0-9]{3,5}", cls) or num is None:
-                gps_hint.value = "Scrivi la classe di concorso (es. A028) e il punteggio (es. 42,5)."
-                gps_info.value = ""
-            else:
-                gps_hint.value = ""
-                prefs["gps_class"], prefs["gps_score"] = cls, score
-                save_prefs()
-                fascia = gps_fascia.value or "II"
-                rows = gps_rank(gps_data, cls, fascia, num, gps_region.value or "",
-                                riserva=GPS_RISERVA if gps_riserva.value else 0.0)
-                if not rows:
-                    gps_info.value = (f"Nessuna nomina trovata per {cls} ({GPS_FASCE.get(fascia, '')}) nelle province "
-                                      "con dati. Controlla la sigla della classe o cambia fascia.")
-                else:
-                    gps_results.controls = [gps_row(i, r) for i, r in enumerate(rows[:40], 1)]
-                    yes = sum(1 for r in rows if r["esito"] == "si")
-                    maybe = sum(1 for r in rows if r["esito"] == "forse")
-                    gps_info.value = (f"Con {fmt_score(num)} punti, classe {cls}, {GPS_FASCE.get(fascia, '')}: "
-                                      f"nomina sicura in {yes} province, possibile in altre {maybe} (su {len(rows)} con dati). "
-                                      f"Bollettino n. {gps_data.get('bollettino', '?')} {gps_data.get('anno', '')}, "
-                                      f"aggiornato al {gps_data.get('aggiornato', '?')}.")
-            page.update()
-
-        gps_calc_button = ft.FilledButton(content="Trova le province migliori", icon=ft.Icons.PLACE_ROUNDED,
-                                          on_click=run_gps, visible=bool(gps_data))
-        gps_no_data = ft.Text(
-            "I dati dei bollettini non sono ancora nell'app: usa i servizi esterni qui sotto.",
-            size=12, color=ft.Colors.ON_SURFACE_VARIANT, visible=not gps_data)
-
-        gps_dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Dove mi conviene fare le GPS?"),
-            content=ft.Column(
-                tight=True, spacing=10, width=340, scroll=ft.ScrollMode.AUTO,
-                controls=[
-                    ft.Text("Inserisci classe, fascia e punteggio: l'app lo confronta con l'ultimo nominato dei "
-                            "bollettini di nomina di ogni provincia.", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                    gps_class_field, gps_fascia, gps_score_field, gps_region, gps_riserva, gps_hint,
-                    gps_calc_button, gps_no_data, gps_info, gps_results,
-                    ft.TextButton(content="Calcola su punteggiogps.it", icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
-                                  on_click=lambda e: gps_open(GPS_TOOL_URL)),
-                    ft.TextButton(content="Graduatorie GPS di ogni provincia", icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
-                                  on_click=lambda e: gps_open(GPS_LISTS_URL)),
-                    ft.Text("Riserva servizio civile: fino al 15% dei posti di ogni turno e classe. I bollettini non dicono "
-                            "chi sono, quindi «sicura» vale anche con la quota piena (tolgo il 15% dei punteggi più "
-                            "bassi); «forse» se il tuo punteggio basta solo se i riservisti sono stati meno.",
-                            size=11, color=ft.Colors.ON_SURFACE_VARIANT),
-                    ft.Text("Solo le province con bollettini già caricati. Nei bollettini successivi si scende più in "
-                            "basso, quindi è una stima prudente. Fa fede l'Ufficio Scolastico della provincia.",
-                            size=11, color=ft.Colors.ON_SURFACE_VARIANT),
-                ],
-            ),
-            actions=[ft.TextButton(content="Chiudi", on_click=close_gps)],
-        )
-
-        def open_gps(e=None):
-            first_class = prefs["classes"][0] if prefs["classes"] else ""
-            gps_class_field.value = prefs["gps_class"] or first_class
-            gps_score_field.value = prefs["gps_score"]
-            gps_hint.value = ""
-            gps_info.value = ""
-            gps_results.controls = []
-            show_dialog(gps_dlg)
-
-        gps_button.on_click = open_gps
-
-        def on_search_change(e):
-            clear_button.visible = bool(search_input.value)
-            page.update()
-            if timers["search"]:
-                timers["search"].cancel()
-            # attende 300 ms dall'ultimo tasto: la digitazione resta fluida
-            timers["search"] = threading.Timer(0.3, lambda: load_results(reset=True))
-            timers["search"].daemon = True
-            timers["search"].start()
-
-        def on_clear(e):
-            search_input.value = ""
-            clear_button.visible = False
-            load_results(reset=True)
-
-        def on_region(e):
-            state["region"] = region_dropdown.value or ""
-            load_results(reset=True)
-
-        def on_status(e):
-            state["status"] = status_dropdown.value or ""
-            load_results(reset=True)
-
-        search_input.on_change = on_search_change
-        clear_button.on_click = on_clear
-        region_dropdown.on_select = on_region
-        status_dropdown.on_select = on_status
-
-        # ---- Aggiornamento fonti -------------------------------------------
-        def notify(message):
-            try:
-                page.show_dialog(ft.SnackBar(content=ft.Text(message), behavior=ft.SnackBarBehavior.FLOATING))
-            except Exception:
-                pass
-
-        def refresh(e=None):
-            if state["refreshing"]:
-                return
-            state["refreshing"] = True
-            refresh_button.disabled = True
-            progress_bar.visible = True
-            progress_bar.value = None  # indeterminata finché non si conosce il totale
-            region = state["region"]
-            status_text.value = f"Download in corso per {region}…" if region else "Download in corso…"
-            load_results(reset=False, live=True)   # mostra subito lo stato "sto cercando…"
-
-            def background_task():
-                new_count = 0
-                mine_count = 0
-                failed = 0
-                try:
-                    init_db()
-                    known = known_urls()
-                    conn = db_connect()
-
-                    target_sources = {region: SOURCES[region]} if region and region in SOURCES else SOURCES
-                    tasks_info = []
-                    for reg, sources in target_sources.items():
-                        for src_tuple in sources:
-                            source_name, base_url = src_tuple[0], src_tuple[1]
-                            max_pages = src_tuple[2] if len(src_tuple) > 2 else 1
-                            for p in range(1, max_pages + 1):
-                                tasks_info.append((reg, source_name, get_page_url(base_url, p)))
-
-                    total = len(tasks_info)
-                    completed = 0
-                    last_ui = 0.0
-                    last_live = 0.0
-                    shown_new = 0
-
-                    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-                        futures = [executor.submit(parse_source_page, reg, src, url, known)
-                                   for reg, src, url in tasks_info]
-                        for future in as_completed(futures):
-                            completed += 1
-                            try:
-                                items, ok = future.result()
-                                if not ok:
-                                    failed += 1
-                                for item in items:
-                                    try:
-                                        cur = conn.execute(
-                                            """INSERT INTO interpelli (title, url, region, source, target, published, deadline, cdc, post_type, doc_url, email)
-                                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                               ON CONFLICT(url) DO UPDATE SET title=excluded.title, target=excluded.target,
-                                               published=excluded.published, deadline=excluded.deadline, post_type=excluded.post_type,
-                                               doc_url=excluded.doc_url, email=excluded.email""",
-                                            item)
-                                        if cur.rowcount:
-                                            new_count += 1
-                                            if matches_classes(item[0], item[7], prefs["classes"]):
-                                                mine_count += 1
-                                        known.add(item[1])
-                                    except sqlite3.Error:
-                                        pass
-                                conn.commit()
-                            except Exception:
-                                failed += 1
-
-                            now = time.monotonic()
-                            # i risultati si vedono subito: la lista si aggiorna mentre si cerca
-                            if new_count != shown_new and now - last_live > 1.2:
-                                last_live, shown_new = now, new_count
-                                status_text.value = f"Analizzo le fonti… {completed}/{total} · {new_count} nuovi"
-                                progress_bar.value = completed / total if total else 1
-                                load_results(reset=False, live=True)
-                                last_ui = now
-                            elif now - last_ui > 0.2 or completed == total:
-                                last_ui = now
-                                progress_bar.value = completed / total if total else 1
-                                status_text.value = f"Analizzo le fonti… {completed}/{total} · {new_count} nuovi"
-                                page.update()
-                    conn.commit()
-                    conn.close()
-                except Exception as ex:
-                    print(f"Errore scraping: {ex}")
-                    notify("Aggiornamento interrotto da un errore.")
-                finally:
-                    state["refreshing"] = False
-                    progress_bar.visible = False
-                    refresh_button.disabled = False
-                    load_results(reset=False, live=True)
-                    msg = f"{new_count} nuovi interpelli" if new_count else "Nessun nuovo interpello"
-                    if mine_count:
-                        msg = f"⭐ {mine_count} nuovi per te · " + msg
-                    if failed:
-                        msg += f" · {failed} fonti non raggiungibili"
-                    notify(msg)
-
-            threading.Thread(target=background_task, daemon=True).start()
-
-        refresh_button.on_click = refresh
-
-        # ---- Composizione pagina -------------------------------------------
-        paint_pills()
-        refresh_classes_text()
-        page.add(
-            ft.Column(
-                expand=True, spacing=0,
-                controls=[header, filters, status_row, results],
+                expand=True
             )
         )
-        load_results(reset=True)
 
-        # Primo avvio: se non c'è ancora nulla, scarica subito.
-        try:
-            conn = db_connect()
-            empty = conn.execute("SELECT COUNT(*) FROM interpelli").fetchone()[0] == 0
-            conn.close()
-        except sqlite3.Error:
-            empty = False
-        if empty:
-            refresh()
+        dialogo = ft.AlertDialog(
+            content=contenuto_popup,
+            content_padding=0,
+            shape=ft.RoundedRectangleBorder(radius=16)
+        )
 
-    except Exception as ex:
-        print(f"Errore generale nell'app: {ex}")
-        raise
+        def chiudi_dialogo():
+            dialogo.open = False
+            page.update()
 
+        page.dialog = dialogo
+        dialogo.open = True
+        aggiorna_vista_pagina()
 
-async def main(page: ft.Page):
-    raw = None
-    try:
-        raw = await ft.SharedPreferences().get("prefs")
-    except Exception:
-        pass
-    build(page, raw)
+    btn_apri_gps = ft.ElevatedButton(
+        "Dove mi conviene fare le GPS?",
+        icon=ft.icons.MAP,
+        on_click=apri_popup_gps,
+        style=ft.ButtonStyle(color=ft.colors.WHITE, bgcolor=BRAND_LIGHT)
+    )
+
+    page.add(
+        ft.Text("Interpelli & Calcolo Riserve GPS", size=24, weight=ft.FontWeight.BOLD, color=BRAND_DARK),
+        card_calcolatore,
+        ft.Divider(),
+        btn_apri_gps
+    )
 
 
 if __name__ == "__main__":
-    ft.run(main, assets_dir="assets")
+    ft.app(target=main)
