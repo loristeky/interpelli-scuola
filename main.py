@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-App Flet per la gestione degli interpelli, il calcolo delle riserve GPS (15% per CdC)
-e la visualizzazione ottimizzata per Android con paginazione.
+App Flet per la gestione degli interpelli e il calcolo delle riserve GPS (15% per CdC).
 """
 import flet as ft
 import sqlite3
@@ -620,7 +619,7 @@ FILE_EXT_RE = re.compile(r"\.(?:pdf|docx?|odt|xlsx?|zip)(?:\?.*)?$", re.I)
 
 
 # ----------------------------------------------------------------------------
-# Interfaccia Utente Flet (con Sezione Riserva 15% e Popup GPS Impaginato)
+# Interfaccia Utente Flet (con Sezione Riserva 15%)
 # ----------------------------------------------------------------------------
 def main(page: ft.Page):
     page.title = "Gestione Interpelli & Calcolo Riserva 15%"
@@ -672,118 +671,9 @@ def main(page: ft.Page):
 
     calcola_riserva_click(None)
 
-    # Funzione per aprire il popup "Dove mi conviene fare le GPS?" con Paginazione per Android
-    def apri_popup_gps(e):
-        # Dati di esempio (sostituibili con i dati reali del DB o JSON)
-        dati_risultati = [
-            {"provincia": f"Provincia {i+1}", "dettaglio": f"Punteggio min: {50 + i} - Nomine: {10 + i}"} 
-            for i in range(45)
-        ]
-
-        elementi_per_pagina = 7
-        stato = {"pagina_attuale": 1}
-        totale_pagine = math.ceil(len(dati_risultati) / elementi_per_pagina)
-
-        largh_schermo = page.width if page.width < 600 else 550
-        alt_schermo = page.height * 0.85
-
-        lista_view = ft.ListView(expand=True, spacing=8)
-        lbl_info_pagina = ft.Text("", size=14, weight=ft.FontWeight.W_500)
-        btn_prev = ft.OutlinedButton("◀ Prec.")
-        btn_next = ft.OutlinedButton("Succ. ▶")
-
-        def aggiorna_vista_pagina():
-            pagina = stato["pagina_attuale"]
-            inizio = (pagina - 1) * elementi_per_pagina
-            fine = inizio + elementi_per_pagina
-            elementi_correnti = dati_risultati[inizio:fine]
-
-            lista_view.controls.clear()
-            for item in elementi_correnti:
-                lista_view.controls.append(
-                    ft.Card(
-                        content=ft.ListTile(
-                            leading=ft.Icon(ft.icons.LOCATION_ON, color=BRAND_LIGHT),
-                            title=ft.Text(item["provincia"], weight=ft.FontWeight.BOLD),
-                            subtitle=ft.Text(item["dettaglio"]),
-                        ),
-                        margin=ft.margin.only(bottom=4)
-                    )
-                )
-
-            lbl_info_pagina.value = f"Pag. {pagina} di {totale_pagine}"
-            btn_prev.disabled = (pagina == 1)
-            btn_next.disabled = (pagina == totale_pagine)
-            page.update()
-
-        def prev_page(e):
-            if stato["pagina_attuale"] > 1:
-                stato["pagina_attuale"] -= 1
-                aggiorna_vista_pagina()
-
-        def next_page(e):
-            if stato["pagina_attuale"] < totale_pagine:
-                stato["pagina_attuale"] += 1
-                aggiorna_vista_pagina()
-
-        btn_prev.on_click = prev_page
-        btn_next.on_click = next_page
-
-        contenuto_popup = ft.Container(
-            width=largh_schermo,
-            height=alt_schermo,
-            padding=15,
-            content=ft.Column(
-                [
-                    ft.Row(
-                        [
-                            ft.Text("📍 Dove conviene fare le GPS?", size=18, weight=ft.FontWeight.BOLD, color=BRAND_DARK),
-                            ft.IconButton(icon=ft.icons.CLOSE, on_click=lambda _: chiudi_dialogo())
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN
-                    ),
-                    ft.Divider(height=1, color=ft.colors.GREY_300),
-                    lista_view,
-                    ft.Divider(height=1, color=ft.colors.GREY_300),
-                    ft.Row(
-                        [
-                            btn_prev,
-                            lbl_info_pagina,
-                            btn_next
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN
-                    )
-                ],
-                expand=True
-            )
-        )
-
-        dialogo = ft.AlertDialog(
-            content=contenuto_popup,
-            content_padding=0,
-            shape=ft.RoundedRectangleBorder(radius=16)
-        )
-
-        def chiudi_dialogo():
-            dialogo.open = False
-            page.update()
-
-        page.dialog = dialogo
-        dialogo.open = True
-        aggiorna_vista_pagina()
-
-    btn_apri_gps = ft.ElevatedButton(
-        "Dove mi conviene fare le GPS?",
-        icon=ft.icons.MAP,
-        on_click=apri_popup_gps,
-        style=ft.ButtonStyle(color=ft.colors.WHITE, bgcolor=BRAND_LIGHT)
-    )
-
     page.add(
         ft.Text("Interpelli & Calcolo Riserve GPS", size=24, weight=ft.FontWeight.BOLD, color=BRAND_DARK),
-        card_calcolatore,
-        ft.Divider(),
-        btn_apri_gps
+        card_calcolatore
     )
 
 
