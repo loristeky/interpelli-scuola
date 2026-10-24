@@ -954,10 +954,11 @@ def gps_rank(data, cdc, fascia, score, region="", riserva=0.0):
             for t in (classi.get(f"{cdc}:{f}") or {}).get("t", []):
                 totals[t.get("b")] = totals.get(t.get("b"), 0) + len(t["s"])
         soglia, ultima, n, escluse, minima = gps_threshold(entry, riserva, totals)
+        chiamati = sum(totals.values())
         margin = round(score - soglia, 3)
         esito = "si" if margin >= 0 else ("forse" if score >= minima else "no")
         turni = [(t.get("b"), min(sc for sc, _ in t["s"])) for t in entry.get("t", []) if t.get("s")]
-        rows.append({"provincia": prov, "regione": reg, "soglia": soglia, "minima": minima, "turni": turni,
+        rows.append({"provincia": prov, "regione": reg, "soglia": soglia, "minima": minima, "turni": turni, "chiamati": chiamati,
                      "massimo": float(entry["max"]), "nomine": n, "escluse": escluse, "ultima": ultima,
                      "margine": margin, "mancano": round(max(0.0, minima - score), 3),
                      "esito": esito, "ok": esito == "si"})
@@ -1039,12 +1040,12 @@ def build(page: ft.Page, raw_prefs=None):
 
         init_db()
 
-        state = {"profile": "", "region": "", "status": "", "shown": 0, "refreshing": False}
+        state = {"profile": "", "region": "", "status": "", "sort": "new", "shown": 0, "refreshing": False}
         timers = {"search": None}
 
         # ---- Preferenze dell'utente (classi di concorso, dati per le candidature)
         prefs = {"classes": [], "name": "", "phone": "", "gps_class": "", "gps_score": "",
-                 "fav": [], "applied": [], "profiles": [], "theme": ""}
+                 "fav": [], "applied": [], "profiles": [], "theme": "", "calc": {}}
 
         store = ft.SharedPreferences()
 
@@ -1076,6 +1077,8 @@ def build(page: ft.Page, raw_prefs=None):
                     if isinstance(data.get("profiles"), list):
                         prefs["profiles"] = [p for p in data["profiles"] if isinstance(p, dict)
                                              and isinstance(p.get("c"), str) and isinstance(p.get("s"), str)][:8]
+                    if isinstance(data.get("calc"), dict):
+                        prefs["calc"] = data["calc"]
                     if data.get("theme") in ("light", "dark"):
                         prefs["theme"] = data["theme"]
                     for key in ("name", "phone", "gps_class", "gps_score"):
@@ -1186,6 +1189,7 @@ def build(page: ft.Page, raw_prefs=None):
                     padding=ft.Padding.symmetric(horizontal=12, vertical=8),
                     elevation=0,
                 )
+            saved_tools.visible = state["profile"] == "SAVED"
 
         pills_row = ft.Row(
             wrap=True,
@@ -1236,6 +1240,18 @@ def build(page: ft.Page, raw_prefs=None):
             border_color=ft.Colors.TRANSPARENT,
         )
 
+        sort_dropdown = ft.Dropdown(
+            label="Ordina per", value="new", dense=True, border_radius=14, filled=True,
+            border_color=ft.Colors.TRANSPARENT,
+            options=[ft.DropdownOption(key="new", text="Più recenti"),
+                     ft.DropdownOption(key="deadline", text="Scadenza più vicina")])
+
+        def on_sort(e):
+            state["sort"] = sort_dropdown.value or "new"
+            load_results(reset=True)
+
+        sort_dropdown.on_select = on_sort
+
         classes_text = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
 
         gps_button = ft.Container(
@@ -1263,6 +1279,51 @@ def build(page: ft.Page, raw_prefs=None):
             ),
         )
 
+        saved_tools = ft.Row(wrap=True, spacing=0, visible=False)
+
+        def saved_text():
+            """Elenco degli interpelli salvati o a cui hai già risposto, da copiare o mandare a qualcuno."""
+            urls = list(dict.fromkeys(prefs["fav"] + prefs["applied"]))
+            if not urls:
+                return ""
+            conn = db_connect()
+            found = {}
+            for u in urls:
+                row = conn.execute("SELECT title, deadline FROM interpelli WHERE url = ?", (u,)).fetchone()
+                if row:
+                    found[u] = row
+            conn.close()
+            lines = []
+            for u in urls:
+                if u not in found:
+                    continue
+                title, deadline = found[u]
+                tag = " [candidatura inviata]" if u in prefs["applied"] else ""
+                lines.append(f"• {title}{tag}\n  Scadenza: {fmt_date(deadline) if deadline else 'non indicata'}\n  {u}")
+            return "I miei interpelli\n\n" + "\n\n".join(lines)
+
+        def saved_copy(e=None):
+            text = saved_text()
+            if not text:
+                notify("Non hai ancora salvato nessun interpello.")
+                return
+            try:
+                page.run_task(clipboard.set, text)
+                notify("Elenco copiato.")
+            except Exception:
+                notify("Copia non riuscita.")
+
+        def saved_whatsapp(e=None):
+            text = saved_text()
+            if not text:
+                notify("Non hai ancora salvato nessun interpello.")
+                return
+            open_url("https://wa.me/?text=" + quote(text))
+
+        saved_tools.controls = [
+            ft.TextButton(content="Copia elenco", icon=ft.Icons.CONTENT_COPY_ROUNDED, on_click=saved_copy),
+            ft.TextButton(content="Invia su WhatsApp", icon=ft.Icons.SHARE_ROUNDED, on_click=saved_whatsapp)]
+
         filters = ft.Container(
             padding=ft.Padding.only(left=16, right=16, top=14, bottom=4),
             content=ft.Column(
@@ -1271,7 +1332,9 @@ def build(page: ft.Page, raw_prefs=None):
                     gps_button,
                     pills_row,
                     classes_text,
+                    saved_tools,
                     ft.Row(spacing=10, controls=[region_dropdown, status_dropdown]),
+                    sort_dropdown,
                 ],
             ),
         )
@@ -1671,6 +1734,13 @@ def build(page: ft.Page, raw_prefs=None):
                 params.append(today_s)
             return " AND ".join(where), params
 
+        def order_clause():
+            if state["sort"] == "deadline":
+                today_s = date.today().strftime("%Y-%m-%d")      # prima i aperti per scadenza più vicina, poi senza data, poi scaduti
+                return (f"CASE WHEN deadline >= '{today_s}' THEN 0 WHEN deadline IS NULL OR deadline = '' THEN 1 "
+                        "ELSE 2 END, deadline ASC, published DESC, id DESC")
+            return "published DESC, id DESC"
+
         def state_search_tokens():
             return [t for t in (search_input.value or "").strip().split() if t]
 
@@ -1694,7 +1764,7 @@ def build(page: ft.Page, raw_prefs=None):
                     total_in_db = conn.execute("SELECT COUNT(*) FROM interpelli").fetchone()[0]
                     rows = conn.execute(
                         "SELECT title, url, region, source, target, published, deadline, cdc, post_type, doc_url, email, verified "
-                        f"FROM interpelli WHERE {where} ORDER BY published DESC, id DESC LIMIT ? OFFSET ?",
+                        f"FROM interpelli WHERE {where} ORDER BY {order_clause()} LIMIT ? OFFSET ?",
                         params + [limit, offset],
                     ).fetchall()
                     conn.close()
@@ -1999,6 +2069,9 @@ def build(page: ft.Page, raw_prefs=None):
                         ft.ProgressBar(value=fill, color=color, bgcolor=ft.Colors.with_opacity(0.15, color),
                                        bar_height=6, border_radius=3),
                         ft.Text(last, size=11.5, color=ft.Colors.ON_SURFACE_VARIANT),
+                        *([ft.Text(f"Riserva 15%: tolti {r['escluse']} posti su {r['chiamati']} chiamati della classe "
+                                   "(dai punteggi più bassi)", size=11.5,
+                                   color=ft.Colors.ON_SURFACE_VARIANT)] if r.get("escluse") else []),
                         *([ft.Text("Per turno, ultimo nominato: " + " → ".join(
                             f"{b}° {fmt_score(v)}" for b, v in r["turni"]), size=11.5,
                             color=ft.Colors.ON_SURFACE_VARIANT)] if len(r.get("turni", [])) > 1 else []),
@@ -2012,6 +2085,7 @@ def build(page: ft.Page, raw_prefs=None):
             gps_info.visible = False
             gps_compare_card.visible = False
             gps_stats_card.visible = False
+            gps_share_row.visible = False
             cls, score, num = gps_values()
             num = parse_score(score)
             if not re.fullmatch(r"[A-Z0-9]{3,5}", cls) or num is None:
@@ -2043,6 +2117,11 @@ def build(page: ft.Page, raw_prefs=None):
                     gps_summary.visible = True
                     gps_results.controls = [gps_row(i, r, num) for i, r in enumerate(rows[:80], 1)]
                     gps_state["rows"] = {r["provincia"]: r for r in rows}
+                    gps_state["text"] = (f"GPS {cls}, {GPS_FASCE.get(fascia, '')}, {fmt_score(num)} punti:\n" + "\n".join(
+                        f"• {r['provincia']}: " + {"si": "ci saresti", "forse": "forse",
+                                                   "no": "troppo alto"}[r["esito"]]
+                        + f" (ultimo nominato {fmt_score(r['soglia'])})" for r in rows[:30]))
+                    gps_share_row.visible = True
                     opts = [ft.DropdownOption(key="", text="—")] + [
                         ft.DropdownOption(key=r["provincia"], text=r["provincia"]) for r in rows]
                     for dd, r in zip(gps_compare_pick, rows):
@@ -2066,6 +2145,55 @@ def build(page: ft.Page, raw_prefs=None):
                                       + f" · Bollettino n. {gps_data.get('bollettino', '?')} {gps_data.get('anno', '')}, "
                                         f"aggiornato al {gps_data.get('aggiornato', '?')}.")
             page.update()
+
+        gps_all_out = ft.Column(spacing=6)
+        gps_share_row = ft.Row(visible=False, wrap=True, spacing=0)
+
+        def run_all(e=None):
+            _cls, score, _n = gps_values()
+            num = parse_score(score)
+            if num is None:
+                gps_hint.value = "Scrivi il tuo punteggio per vedere l'esito su tutte le tue classi."
+                gps_all_out.controls = []
+            elif not prefs["classes"]:
+                gps_all_out.controls = [ft.Text("Aggiungi le tue classi con il tasto in alto nella schermata "
+                                                "principale (Le mie classi).", size=12.5)]
+            else:
+                gps_hint.value = ""
+                fascia = gps_fascia.value or "II"
+                lines = []
+                for c in prefs["classes"]:
+                    rows = gps_rank(gps_data, c, fascia, num, gps_region.value or "",
+                                    riserva=GPS_RISERVA if gps_riserva.value else 0.0)
+                    yes = sum(1 for r in rows if r["esito"] == "si")
+                    maybe = sum(1 for r in rows if r["esito"] == "forse")
+                    color = GREEN if yes else ("#E08A00" if maybe else ft.Colors.OUTLINE)
+                    text = (f"ci saresti in {yes}, forse in {maybe}, su {len(rows)} province con dati"
+                            if rows else "nessuna nomina trovata nei bollettini")
+                    lines.append(ft.Row(spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER, controls=[
+                        ft.Container(padding=ft.Padding.symmetric(horizontal=10, vertical=4), border_radius=10,
+                                     bgcolor=ft.Colors.with_opacity(0.14, color),
+                                     content=ft.Text(c, size=13, weight=ft.FontWeight.W_800, color=color)),
+                        ft.Text(text, size=12.5, expand=True)]))
+                gps_all_out.controls = lines
+            page.update()
+
+        def gps_share_text():
+            return gps_state.get("text", "")
+
+        def gps_copy(e=None):
+            try:
+                page.run_task(clipboard.set, gps_share_text())
+                notify("Elenco copiato.")
+            except Exception:
+                notify("Copia non riuscita.")
+
+        def gps_whatsapp(e=None):
+            open_url("https://wa.me/?text=" + quote(gps_share_text()))
+
+        gps_share_row.controls = [
+            ft.TextButton(content="Copia elenco", icon=ft.Icons.CONTENT_COPY_ROUNDED, on_click=gps_copy),
+            ft.TextButton(content="Invia su WhatsApp", icon=ft.Icons.SHARE_ROUNDED, on_click=gps_whatsapp)]
 
         def section_card(controls):
             return ft.Container(
@@ -2129,10 +2257,18 @@ def build(page: ft.Page, raw_prefs=None):
                             gps_no_data,
                         ]),
                         gps_summary,
+                        gps_share_row,
                         gps_results,
                         gps_info,
                         gps_compare_card,
                         gps_stats_card,
+                        section_card([
+                            ft.Text("Le mie classi", size=14, weight=ft.FontWeight.W_700),
+                            ft.Text("Con il punteggio e la fascia qui sopra, l'esito per tutte le classi che hai "
+                                    "salvato in «Le mie classi».", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                            ft.FilledTonalButton(content="Esito su tutte le mie classi",
+                                                 icon=ft.Icons.FACT_CHECK_ROUNDED, on_click=run_all),
+                            gps_all_out]),
                         section_card([
                             ft.Text("Altri strumenti", size=14, weight=ft.FontWeight.W_700),
                             ft.TextButton(content="Graduatorie GPS di ogni provincia",
@@ -2169,6 +2305,22 @@ def build(page: ft.Page, raw_prefs=None):
             page.update()
 
         gps_button.on_click = open_gps
+
+        def go_back(e=None):
+            """Indietro dalle pagine interne; True se ha gestito il gesto."""
+            if calc_view.visible:
+                close_calc()
+                return True
+            if gps_view.visible:
+                close_gps()
+                return True
+            return False
+
+        for _name in ("on_back_button", "on_view_pop"):
+            try:
+                setattr(page, _name, go_back)
+            except Exception:
+                pass
 
         # ---- Calcolo del punteggio GPS ------------------------------------------
         calc = {"serv": []}
@@ -2211,6 +2363,32 @@ def build(page: ft.Page, raw_prefs=None):
                      ("Servizio", serv)]
             return sum(v for _n, v in parts), parts
 
+        def save_calc():
+            prefs["calc"] = {
+                "voto": c_voto.value or "", "lode": bool(c_lode.value),
+                "extra": [k for k, sw in c_extra.items() if sw.value],
+                "master": c_master.value or "0", "lingua": c_lingua.value or "",
+                "dig": bool(c_dig.value), "digedu": bool(c_digedu.value),
+                "serv": [[t, d] for t, d in calc["serv"]]}
+            save_prefs()
+
+        def restore_calc():
+            c = prefs.get("calc") or {}
+            try:
+                c_voto.value = str(c.get("voto", ""))
+                c_lode.value = bool(c.get("lode"))
+                for k, sw in c_extra.items():
+                    sw.value = k in (c.get("extra") or [])
+                if str(c.get("master", "0")) in ("0", "1", "2", "3"):
+                    c_master.value = str(c.get("master", "0"))
+                if c.get("lingua", "") in GPS_LINGUE:
+                    c_lingua.value = c.get("lingua", "")
+                c_dig.value = bool(c.get("dig"))
+                c_digedu.value = bool(c.get("digedu"))
+                calc["serv"] = [(t, int(d)) for t, d in (c.get("serv") or []) if t in ("s", "a")][:40]
+            except Exception:
+                calc["serv"] = []
+
         def paint_calc(e=None):
             total, parts = calc_total()
             c_total.value = fmt_score(total)
@@ -2224,6 +2402,7 @@ def build(page: ft.Page, raw_prefs=None):
                     ft.IconButton(icon=ft.Icons.DELETE_OUTLINE_ROUNDED, icon_size=20, tooltip="Togli",
                                   on_click=lambda ev, i=i: drop_service(i))]))
             c_serv_list.controls = rows
+            save_calc()
             page.update()
 
         def drop_service(i):
@@ -2258,6 +2437,8 @@ def build(page: ft.Page, raw_prefs=None):
             total, _parts = calc_total()
             gps_score_field.value = fmt_score(total)
             close_calc()
+
+        restore_calc()
 
         def open_calc(e=None):
             gps_view.visible = False
