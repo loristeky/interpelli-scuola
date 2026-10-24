@@ -11,7 +11,7 @@ from datetime import datetime, date, timedelta
 from email.utils import parsedate_to_datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.request import Request, urlopen
-from urllib.parse import urljoin
+from urllib.parse import urljoin, quote
 import xml.etree.ElementTree as ET
 
 
@@ -150,7 +150,6 @@ SOURCES = {
 MAX_WORKERS = 15
 PAGE_SIZE = 25          # interpelli mostrati per "blocco"
 DB_VERSION = 6          # alzare per forzare il rifacimento della cache
-GPS_TOOL_URL = "https://punteggiogps.it/"
 GPS_LISTS_URL = "https://www.orizzontescuola.it/gps-docenti-2026-27-ecco-le-prime-graduatorie-in-aggiornamento/"
 SOON_DAYS = 3           # "in scadenza" = scade entro questi giorni
 
@@ -957,13 +956,56 @@ def gps_rank(data, cdc, fascia, score, region="", riserva=0.0):
         soglia, ultima, n, escluse, minima = gps_threshold(entry, riserva, totals)
         margin = round(score - soglia, 3)
         esito = "si" if margin >= 0 else ("forse" if score >= minima else "no")
-        rows.append({"provincia": prov, "regione": reg, "soglia": soglia, "minima": minima,
+        turni = [(t.get("b"), min(sc for sc, _ in t["s"])) for t in entry.get("t", []) if t.get("s")]
+        rows.append({"provincia": prov, "regione": reg, "soglia": soglia, "minima": minima, "turni": turni,
                      "massimo": float(entry["max"]), "nomine": n, "escluse": escluse, "ultima": ultima,
                      "margine": margin, "mancano": round(max(0.0, minima - score), 3),
                      "esito": esito, "ok": esito == "si"})
     order = {"si": 0, "forse": 1, "no": 2}
     rows.sort(key=lambda r: (order[r["esito"]], -r["margine"], -r["nomine"], r["provincia"]))
     return rows
+
+
+# Punteggio GPS: regole dell'OM 27/2026 come indicate dall'utente (titolo d'accesso, titoli aggiuntivi, servizio).
+GPS_TITOLI_EXTRA = [("dott", "Dottorato di ricerca", 14), ("asn", "Abilitazione Scientifica Nazionale", 15),
+                    ("assegni", "Assegni di ricerca", 13), ("sost", "Specializzazione sul sostegno", 9)]
+GPS_LINGUE = {"": 0, "B2": 3, "C1": 4, "C2": 6}
+GPS_MASTER_MAX = 3
+GPS_INFORMATICHE_MAX = 4
+GPS_SERVIZIO = [(16, 45, 2), (46, 75, 4), (76, 105, 6), (106, 135, 8), (136, 165, 10), (166, 10 ** 6, 12)]
+
+
+def gps_points_access(voto, lode=False):
+    """Titolo di accesso: fino a 76/110 sono 12 punti, poi +0,50 per ogni punto sopra 76 (110 = 29); la lode dà +4."""
+    if voto is None or voto < 1:
+        return 0.0
+    pts = 12.0 if voto <= 76 else 12.0 + (min(voto, 110) - 76) * 0.5
+    if lode and voto >= 110:
+        pts += 4
+    return pts
+
+
+def gps_points_service(days, specific=True):
+    """Un anno scolastico: servizio specifico 2-12 punti in base ai giorni, aspecifico la metà (massimo 6)."""
+    for lo, hi, pts in GPS_SERVIZIO:
+        if lo <= days <= hi:
+            return float(pts) if specific else pts / 2
+    return 0.0
+
+
+def gps_stats(data, cdc):
+    """Nomine di una classe di concorso in tutta Italia: totali, per fascia e le province con più chiamati."""
+    cdc = (cdc or "").strip().upper()
+    per_fascia = {f: 0 for f in GPS_FASCE}
+    per_prov = {}
+    for prov, info in data.get("province", {}).items():
+        for f in GPS_FASCE:
+            e = info.get("classi", {}).get(f"{cdc}:{f}")
+            if e and e.get("n"):
+                per_fascia[f] += int(e["n"])
+                per_prov[prov] = per_prov.get(prov, 0) + int(e["n"])
+    top = sorted(per_prov.items(), key=lambda x: (-x[1], x[0]))[:5]
+    return {"totale": sum(per_fascia.values()), "fasce": per_fascia, "province": len(per_prov), "top": top}
 
 
 def build_mailto(email, title, cdc, name, phone):
@@ -1001,7 +1043,8 @@ def build(page: ft.Page, raw_prefs=None):
         timers = {"search": None}
 
         # ---- Preferenze dell'utente (classi di concorso, dati per le candidature)
-        prefs = {"classes": [], "name": "", "phone": "", "gps_class": "", "gps_score": ""}
+        prefs = {"classes": [], "name": "", "phone": "", "gps_class": "", "gps_score": "",
+                 "fav": [], "applied": [], "profiles": [], "theme": ""}
 
         store = ft.SharedPreferences()
 
@@ -1027,6 +1070,14 @@ def build(page: ft.Page, raw_prefs=None):
                     classes = data.get("classes", [])
                     if isinstance(classes, list):
                         prefs["classes"] = [c for c in classes if isinstance(c, str)]
+                    for key in ("fav", "applied"):
+                        if isinstance(data.get(key), list):
+                            prefs[key] = [u for u in data[key] if isinstance(u, str)][-300:]
+                    if isinstance(data.get("profiles"), list):
+                        prefs["profiles"] = [p for p in data["profiles"] if isinstance(p, dict)
+                                             and isinstance(p.get("c"), str) and isinstance(p.get("s"), str)][:8]
+                    if data.get("theme") in ("light", "dark"):
+                        prefs["theme"] = data["theme"]
                     for key in ("name", "phone", "gps_class", "gps_score"):
                         if isinstance(data.get(key), str):
                             prefs[key] = data[key]
@@ -1040,6 +1091,12 @@ def build(page: ft.Page, raw_prefs=None):
                 pass
 
         load_prefs()
+
+        def apply_theme():
+            page.theme_mode = {"light": ft.ThemeMode.LIGHT, "dark": ft.ThemeMode.DARK}.get(
+                prefs["theme"], ft.ThemeMode.SYSTEM)
+
+        apply_theme()
 
         # ---- Intestazione con logo e ricerca -------------------------------
         # I tre pulsanti stanno nella riga dei filtri, accanto a «Per me» (più comodi da raggiungere).
@@ -1139,6 +1196,7 @@ def build(page: ft.Page, raw_prefs=None):
                 make_pill("DOCENTI", "Docenti", None),
                 make_pill("ATA", "ATA", None),
                 make_pill("ME", "Per me", ft.Icons.STAR_ROUNDED),
+                make_pill("SAVED", "Salvati", ft.Icons.BOOKMARK_ROUNDED),
                 settings_button,
                 refresh_button,
                 reset_button,
@@ -1324,6 +1382,8 @@ def build(page: ft.Page, raw_prefs=None):
                 chips.append(badge(cdc_label(code), ft.Colors.SURFACE_CONTAINER_HIGHEST, ft.Colors.ON_SURFACE_VARIANT))
             if mine:
                 chips.append(badge("PER TE", GOLD, "#3B2A00", ft.Icons.STAR_ROUNDED))
+            if url in prefs["applied"]:
+                chips.append(badge("CANDIDATO", GREEN, ft.Colors.WHITE, ft.Icons.CHECK_ROUNDED))
             if is_new(published):
                 chips.append(badge("NUOVO", GREEN, ft.Colors.WHITE))
             if verified:
@@ -1364,8 +1424,37 @@ def build(page: ft.Page, raw_prefs=None):
             if email and status != "expired":
                 mailto = build_mailto(email, title, cdc, prefs["name"] or "Candidato", prefs["phone"])
                 actions.append(ft.TextButton(content="Candidati", icon=ft.Icons.MAIL_OUTLINE_ROUNDED, url=mailto))
-            if actions:
-                body.append(ft.Row(actions, spacing=4, wrap=True))
+            def toggle(key, btn, on_icon, off_icon, color):
+                lst = prefs[key]
+                if url in lst:
+                    lst.remove(url)
+                else:
+                    lst.append(url)
+                    del lst[:-300]
+                on = url in lst
+                btn.icon = on_icon if on else off_icon
+                btn.icon_color = color if on else ft.Colors.OUTLINE
+                save_prefs()
+                btn.update()
+
+            def mark_button(key, on_icon, off_icon, color, tip):
+                on = url in prefs[key]
+                btn = ft.IconButton(icon=on_icon if on else off_icon, icon_size=22, tooltip=tip,
+                                    icon_color=color if on else ft.Colors.OUTLINE)
+                btn.on_click = lambda e, b=btn: toggle(key, b, on_icon, off_icon, color)
+                return btn
+
+            def share(e):
+                open_url("https://wa.me/?text=" + quote(f"{title}\n{url}"))
+
+            actions += [
+                mark_button("fav", ft.Icons.BOOKMARK_ROUNDED, ft.Icons.BOOKMARK_BORDER_ROUNDED, GOLD, "Salva"),
+                mark_button("applied", ft.Icons.CHECK_CIRCLE_ROUNDED, ft.Icons.CHECK_CIRCLE_OUTLINE_ROUNDED, GREEN,
+                            "Candidatura inviata"),
+                ft.IconButton(icon=ft.Icons.SHARE_ROUNDED, icon_size=20, icon_color=ft.Colors.OUTLINE,
+                              tooltip="Condividi su WhatsApp", on_click=share),
+            ]
+            body.append(ft.Row(actions, spacing=2, wrap=True, run_spacing=0))
 
             return ft.Container(
                 content=ft.Column(body, spacing=8),
@@ -1555,6 +1644,13 @@ def build(page: ft.Page, raw_prefs=None):
                     where.append("(" + " OR ".join(parts) + ")")
                 else:
                     where.append("1=0")
+            elif state["profile"] == "SAVED":
+                saved = list(dict.fromkeys(prefs["fav"] + prefs["applied"]))
+                if saved:
+                    where.append("url IN (" + ",".join("?" * len(saved)) + ")")
+                    params.extend(saved)
+                else:
+                    where.append("1=0")
             elif state["profile"]:
                 where.append("target = ?")
                 params.append(state["profile"])
@@ -1674,6 +1770,11 @@ def build(page: ft.Page, raw_prefs=None):
         )
         name_field = ft.TextField(label="Nome e cognome (per le candidature)")
         phone_field = ft.TextField(label="Telefono (facoltativo)")
+        theme_dropdown = ft.Dropdown(
+            label="Aspetto", value="",
+            options=[ft.DropdownOption(key="", text="Come il telefono"),
+                     ft.DropdownOption(key="light", text="Chiaro"),
+                     ft.DropdownOption(key="dark", text="Scuro")])
 
         def close_settings(e=None):
             close_dialog(dlg)
@@ -1695,6 +1796,8 @@ def build(page: ft.Page, raw_prefs=None):
             prefs["classes"] = parse_classes(classes_field.value)
             prefs["name"] = (name_field.value or "").strip()
             prefs["phone"] = (phone_field.value or "").strip()
+            prefs["theme"] = theme_dropdown.value or ""
+            apply_theme()
             save_prefs()
             refresh_classes_text()
             if state["profile"] == "ME" and not prefs["classes"]:
@@ -1711,7 +1814,7 @@ def build(page: ft.Page, raw_prefs=None):
                 controls=[
                     ft.Text("Servono al filtro «Per me» e alle notifiche: ricevi un avviso solo per i nuovi "
                             "interpelli di queste classi.", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                    classes_field, name_field, phone_field,
+                    classes_field, name_field, phone_field, theme_dropdown,
                     ft.TextButton("Copia le classi per le notifiche", icon=ft.Icons.CONTENT_COPY_ROUNDED,
                                   on_click=lambda e: copy_classes()),
                     ft.Text("Per le notifiche a app chiusa incolla l'elenco nella variabile NOTIFY_CLASSES "
@@ -1727,6 +1830,7 @@ def build(page: ft.Page, raw_prefs=None):
             classes_field.value = ", ".join(prefs["classes"])
             name_field.value = prefs["name"]
             phone_field.value = prefs["phone"]
+            theme_dropdown.value = prefs["theme"]
             show_dialog(dlg)
 
         settings_button.on_click = open_settings
@@ -1762,7 +1866,90 @@ def build(page: ft.Page, raw_prefs=None):
             options=[ft.DropdownOption(key="", text="Tutta Italia")]
                     + [ft.DropdownOption(key=r, text=r) for r in sorted(SOURCES.keys())],
         )
+        gps_province = ft.Dropdown(
+            label="Provincia", value="", border_radius=14,
+            options=[ft.DropdownOption(key="", text="Tutte le province")]
+                    + [ft.DropdownOption(key=p, text=p) for p in sorted(gps_data.get("province", {}))])
         gps_riserva = ft.Switch(label="Considera la riserva del 15%", value=True)
+        gps_profiles_row = ft.Row(wrap=True, spacing=6, run_spacing=6)
+        gps_state = {"rows": {}}
+
+        def profile_label(p):
+            return f"{p['c']} · {GPS_FASCE.get(p['f'], p['f'])} · {p['s'].replace('.', ',')}"
+
+        def use_profile(p):
+            gps_class_field.value = p["c"]
+            gps_fascia.value = p["f"]
+            gps_score_field.value = p["s"]
+            run_gps()
+
+        def drop_profile(p):
+            prefs["profiles"] = [q for q in prefs["profiles"] if q != p]
+            save_prefs()
+            paint_profiles()
+            page.update()
+
+        def paint_profiles():
+            chips = []
+            for p in prefs["profiles"]:
+                chips.append(ft.Container(
+                    border_radius=18, bgcolor=ft.Colors.SECONDARY_CONTAINER, ink=True,
+                    padding=ft.Padding.only(left=12, right=2, top=2, bottom=2),
+                    on_click=lambda e, p=p: use_profile(p),
+                    content=ft.Row(tight=True, spacing=0, controls=[
+                        ft.Text(profile_label(p), size=12, weight=ft.FontWeight.W_600,
+                                color=ft.Colors.ON_SECONDARY_CONTAINER),
+                        ft.IconButton(icon=ft.Icons.CLOSE_ROUNDED, icon_size=15, tooltip="Elimina",
+                                      on_click=lambda e, p=p: drop_profile(p))])))
+            gps_profiles_row.controls = chips
+            gps_profiles_row.visible = bool(chips)
+
+        def save_profile(e=None):
+            cls, score, num = gps_values()
+            num = parse_score(score)
+            if not re.fullmatch(r"[A-Z0-9]{3,5}", cls) or num is None:
+                gps_hint.value = "Scrivi classe e punteggio prima di salvare il profilo."
+                page.update()
+                return
+            p = {"c": cls, "f": gps_fascia.value or "II", "s": score}
+            if p not in prefs["profiles"]:
+                prefs["profiles"] = (prefs["profiles"] + [p])[-8:]
+            gps_hint.value = ""
+            save_prefs()
+            paint_profiles()
+            page.update()
+
+        gps_compare_pick = [ft.Dropdown(label=f"Provincia {i}", value="", expand=True, dense=True, border_radius=14,
+                                        options=[ft.DropdownOption(key="", text="—")]) for i in (1, 2, 3)]
+        gps_compare_out = ft.Row(spacing=8, vertical_alignment=ft.CrossAxisAlignment.START)
+        gps_compare_card = ft.Container(visible=False)
+        gps_stats_card = ft.Container(visible=False)
+
+        def paint_compare(e=None):
+            cols = []
+            for dd in gps_compare_pick:
+                r = gps_state["rows"].get(dd.value or "")
+                if not r:
+                    continue
+                color = GREEN if r["esito"] == "si" else ("#E08A00" if r["esito"] == "forse" else ft.Colors.ERROR)
+                label = {"si": "Ci saresti", "forse": "Forse", "no": "Troppo alto"}[r["esito"]]
+                cols.append(ft.Container(
+                    expand=True, padding=10, border_radius=14, bgcolor=ft.Colors.with_opacity(0.10, color),
+                    content=ft.Column(spacing=3, controls=[
+                        ft.Text(r["provincia"], size=13, weight=ft.FontWeight.W_800),
+                        ft.Text(label, size=12, weight=ft.FontWeight.W_700, color=color),
+                        ft.Text(f"Ultimo: {fmt_score(r['soglia'])}", size=11.5),
+                        ft.Text(f"Nomine: {r['nomine']}", size=11.5),
+                        ft.Text((f"Margine: +{fmt_score(r['margine'])}" if r["margine"] >= 0
+                                 else f"Mancano: {fmt_score(r['mancano'] or abs(r['margine']))}"), size=11.5)])))
+            gps_compare_out.controls = cols
+            try:
+                page.update()
+            except Exception:
+                pass
+
+        for dd in gps_compare_pick:
+            dd.on_select = paint_compare
         gps_results = ft.Column(spacing=10)
         gps_summary = ft.Container(visible=False)
         gps_info = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT, visible=False)
@@ -1812,6 +1999,9 @@ def build(page: ft.Page, raw_prefs=None):
                         ft.ProgressBar(value=fill, color=color, bgcolor=ft.Colors.with_opacity(0.15, color),
                                        bar_height=6, border_radius=3),
                         ft.Text(last, size=11.5, color=ft.Colors.ON_SURFACE_VARIANT),
+                        *([ft.Text("Per turno, ultimo nominato: " + " → ".join(
+                            f"{b}° {fmt_score(v)}" for b, v in r["turni"]), size=11.5,
+                            color=ft.Colors.ON_SURFACE_VARIANT)] if len(r.get("turni", [])) > 1 else []),
                     ])),
                 ]),
             )
@@ -1820,6 +2010,8 @@ def build(page: ft.Page, raw_prefs=None):
             gps_results.controls = []
             gps_summary.visible = False
             gps_info.visible = False
+            gps_compare_card.visible = False
+            gps_stats_card.visible = False
             cls, score, num = gps_values()
             num = parse_score(score)
             if not re.fullmatch(r"[A-Z0-9]{3,5}", cls) or num is None:
@@ -1831,6 +2023,8 @@ def build(page: ft.Page, raw_prefs=None):
                 fascia = gps_fascia.value or "II"
                 rows = gps_rank(gps_data, cls, fascia, num, gps_region.value or "",
                                 riserva=GPS_RISERVA if gps_riserva.value else 0.0)
+                if gps_province.value:
+                    rows = [r for r in rows if r["provincia"] == gps_province.value]
                 gps_info.visible = True
                 if not rows:
                     gps_info.value = (f"Nessuna nomina trovata per {cls} ({GPS_FASCE.get(fascia, '')}) nelle province "
@@ -1848,6 +2042,26 @@ def build(page: ft.Page, raw_prefs=None):
                     ])
                     gps_summary.visible = True
                     gps_results.controls = [gps_row(i, r, num) for i, r in enumerate(rows[:80], 1)]
+                    gps_state["rows"] = {r["provincia"]: r for r in rows}
+                    opts = [ft.DropdownOption(key="", text="—")] + [
+                        ft.DropdownOption(key=r["provincia"], text=r["provincia"]) for r in rows]
+                    for dd, r in zip(gps_compare_pick, rows):
+                        dd.options, dd.value = opts, r["provincia"]
+                    for dd in gps_compare_pick[len(rows):]:
+                        dd.options, dd.value = opts, ""
+                    paint_compare()
+                    gps_compare_card.visible = len(rows) > 1
+                    st = gps_stats(gps_data, cls)
+                    if st["totale"]:
+                        gps_stats_card.content = ft.Column(spacing=6, controls=[
+                            ft.Text(f"Classe {cls} in tutta Italia", size=14, weight=ft.FontWeight.W_700),
+                            ft.Text(f"{st['totale']} nomine in {st['province']} province "
+                                    f"(I fascia {st['fasce'].get('I', 0)}, II fascia {st['fasce'].get('II', 0)}).",
+                                    size=12.5),
+                            ft.Text("Dove ne hanno chiamate di più: " + ", ".join(
+                                f"{p} ({n})" for p, n in st["top"]), size=12.5,
+                                color=ft.Colors.ON_SURFACE_VARIANT)])
+                        gps_stats_card.visible = True
                     gps_info.value = (f"{len(rows)} province con dati" + (" (mostro le prime 80)" if len(rows) > 80 else "")
                                       + f" · Bollettino n. {gps_data.get('bollettino', '?')} {gps_data.get('anno', '')}, "
                                         f"aggiornato al {gps_data.get('aggiornato', '?')}.")
@@ -1858,6 +2072,10 @@ def build(page: ft.Page, raw_prefs=None):
                 padding=16, border_radius=22, bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
                 border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
                 content=ft.Column(spacing=12, controls=controls))
+
+        gps_compare_card.content = section_card([
+            ft.Text("Confronta province", size=14, weight=ft.FontWeight.W_700),
+            ft.Row(spacing=8, controls=gps_compare_pick), gps_compare_out])
 
         gps_calc_button = ft.FilledButton(content="Trova le province migliori", icon=ft.Icons.PLACE_ROUNDED,
                                           on_click=run_gps, visible=bool(gps_data), expand=True, height=50)
@@ -1898,20 +2116,25 @@ def build(page: ft.Page, raw_prefs=None):
                                     color=ft.Colors.ON_SURFACE_VARIANT),
                             ft.Row(spacing=10, controls=[gps_class_field, gps_fascia]),
                             gps_score_field,
-                            gps_region,
+                            ft.TextButton(content="Non so il mio punteggio: calcolalo", icon=ft.Icons.CALCULATE_ROUNDED,
+                                          on_click=lambda e: open_calc(e)),
+                            ft.Row(spacing=10, controls=[ft.Column(expand=True, controls=[gps_region]),
+                                                         ft.Column(expand=True, controls=[gps_province])]),
                             gps_riserva,
                             gps_hint,
                             ft.Row(controls=[gps_calc_button]),
+                            ft.TextButton(content="Salva questo profilo", icon=ft.Icons.BOOKMARK_ADD_ROUNDED,
+                                          on_click=save_profile),
+                            gps_profiles_row,
                             gps_no_data,
                         ]),
                         gps_summary,
                         gps_results,
                         gps_info,
+                        gps_compare_card,
+                        gps_stats_card,
                         section_card([
                             ft.Text("Altri strumenti", size=14, weight=ft.FontWeight.W_700),
-                            ft.TextButton(content="Calcola il punteggio su punteggiogps.it",
-                                          icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
-                                          on_click=lambda e: gps_open(GPS_TOOL_URL)),
                             ft.TextButton(content="Graduatorie GPS di ogni provincia",
                                           icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
                                           on_click=lambda e: gps_open(GPS_LISTS_URL)),
@@ -1937,12 +2160,152 @@ def build(page: ft.Page, raw_prefs=None):
             gps_hint.value = ""
             gps_info.visible = False
             gps_summary.visible = False
+            gps_compare_card.visible = False
+            gps_stats_card.visible = False
             gps_results.controls = []
+            paint_profiles()
             home_view.visible = False
             gps_view.visible = True
             page.update()
 
         gps_button.on_click = open_gps
+
+        # ---- Calcolo del punteggio GPS ------------------------------------------
+        calc = {"serv": []}
+        c_voto = ft.TextField(label="Voto di laurea / diploma (es. 98)", keyboard_type=ft.KeyboardType.NUMBER,
+                              border_radius=14, prefix_icon=ft.Icons.SCHOOL_ROUNDED)
+        c_lode = ft.Switch(label="110 e lode (+4)", value=False)
+        c_extra = {k: ft.Switch(label=f"{label} ({pts} punti)", value=False) for k, label, pts in GPS_TITOLI_EXTRA}
+        c_master = ft.Dropdown(label="Master (1 punto ciascuno, max 3)", value="0", border_radius=14,
+                               options=[ft.DropdownOption(key=str(i), text=str(i)) for i in range(0, 4)])
+        c_lingua = ft.Dropdown(label="Certificazione linguistica più alta", value="", border_radius=14,
+                               options=[ft.DropdownOption(key="", text="Nessuna"),
+                                        ft.DropdownOption(key="B2", text="B2 (3 punti)"),
+                                        ft.DropdownOption(key="C1", text="C1 (4 punti)"),
+                                        ft.DropdownOption(key="C2", text="C2 (6 punti)")])
+        c_dig = ft.Switch(label="Certificazione DigComp 2.2 (1 punto)", value=False)
+        c_digedu = ft.Switch(label="Certificazione DigCompEdu (2 punti)", value=False)
+        c_serv_type = ft.Dropdown(label="Tipo", value="s", expand=True, dense=True, border_radius=14,
+                                  options=[ft.DropdownOption(key="s", text="Specifico"),
+                                           ft.DropdownOption(key="a", text="Aspecifico")])
+        c_serv_days = ft.TextField(label="Giorni", keyboard_type=ft.KeyboardType.NUMBER, expand=True,
+                                   dense=True, border_radius=14)
+        c_serv_list = ft.Column(spacing=4)
+        c_total = ft.Text("0", size=44, weight=ft.FontWeight.W_800, color=ft.Colors.WHITE)
+        c_detail = ft.Text("", size=12, color=ft.Colors.with_opacity(0.9, ft.Colors.WHITE))
+
+        def calc_total():
+            try:
+                voto = int((c_voto.value or "").strip())
+            except ValueError:
+                voto = None
+            if voto is not None and not 1 <= voto <= 110:
+                voto = None
+            acc = gps_points_access(voto, c_lode.value)
+            extra = sum(pts for k, _l, pts in GPS_TITOLI_EXTRA if c_extra[k].value)
+            master = min(int(c_master.value or 0), GPS_MASTER_MAX)
+            lingua = GPS_LINGUE.get(c_lingua.value or "", 0)
+            info = min((1 if c_dig.value else 0) + (2 if c_digedu.value else 0), GPS_INFORMATICHE_MAX)
+            serv = sum(gps_points_service(d, t == "s") for t, d in calc["serv"])
+            parts = [("Titolo di accesso", acc), ("Titoli aggiuntivi", extra + master + lingua + info),
+                     ("Servizio", serv)]
+            return sum(v for _n, v in parts), parts
+
+        def paint_calc(e=None):
+            total, parts = calc_total()
+            c_total.value = fmt_score(total)
+            c_detail.value = "  ·  ".join(f"{n}: {fmt_score(v)}" for n, v in parts)
+            rows = []
+            for i, (t, d) in enumerate(calc["serv"]):
+                pts = gps_points_service(d, t == "s")
+                rows.append(ft.Row(spacing=4, controls=[
+                    ft.Text(f"{'Specifico' if t == 's' else 'Aspecifico'} · {d} giorni → {fmt_score(pts)} punti",
+                            size=13, expand=True),
+                    ft.IconButton(icon=ft.Icons.DELETE_OUTLINE_ROUNDED, icon_size=20, tooltip="Togli",
+                                  on_click=lambda ev, i=i: drop_service(i))]))
+            c_serv_list.controls = rows
+            page.update()
+
+        def drop_service(i):
+            if 0 <= i < len(calc["serv"]):
+                del calc["serv"][i]
+            paint_calc()
+
+        def add_service(e=None):
+            try:
+                days = int((c_serv_days.value or "").strip())
+            except ValueError:
+                days = 0
+            if days < 16 or days > 366:
+                notify("Servono almeno 16 giorni di servizio in un anno scolastico (massimo 366).")
+                return
+            calc["serv"].append((c_serv_type.value or "s", days))
+            c_serv_days.value = ""
+            paint_calc()
+
+        for ctl in [c_voto, c_lode, c_dig, c_digedu, *c_extra.values()]:
+            ctl.on_change = paint_calc
+        for ctl in (c_master, c_lingua):
+            ctl.on_select = paint_calc
+        c_serv_days.on_submit = add_service
+
+        def close_calc(e=None):
+            calc_view.visible = False
+            gps_view.visible = True
+            page.update()
+
+        def use_score(e=None):
+            total, _parts = calc_total()
+            gps_score_field.value = fmt_score(total)
+            close_calc()
+
+        def open_calc(e=None):
+            gps_view.visible = False
+            calc_view.visible = True
+            paint_calc()
+
+        calc_header = ft.Container(
+            gradient=ft.LinearGradient(begin=ft.Alignment.TOP_LEFT, end=ft.Alignment.BOTTOM_RIGHT,
+                                       colors=[BRAND_DARK, BRAND_LIGHT]),
+            padding=ft.Padding.only(left=6, right=18, top=18, bottom=18),
+            border_radius=ft.BorderRadius.only(bottom_left=28, bottom_right=28),
+            content=ft.Column(spacing=4, controls=[
+                ft.Row(vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=4, controls=[
+                    ft.IconButton(icon=ft.Icons.ARROW_BACK_ROUNDED, icon_color=ft.Colors.WHITE, icon_size=26,
+                                  tooltip="Indietro", on_click=close_calc),
+                    ft.Text("Calcola il tuo punteggio", size=20, weight=ft.FontWeight.W_800,
+                            color=ft.Colors.WHITE)]),
+                ft.Container(padding=ft.Padding.only(left=16), content=ft.Row(
+                    vertical_alignment=ft.CrossAxisAlignment.END, spacing=8,
+                    controls=[c_total, ft.Text("punti", size=15, color=ft.Colors.WHITE)])),
+                ft.Container(padding=ft.Padding.only(left=16), content=c_detail),
+            ]),
+        )
+
+        def calc_section(title, controls):
+            return section_card([ft.Text(title, size=14, weight=ft.FontWeight.W_700), *controls])
+
+        calc_body = ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, controls=[
+            ft.Container(padding=ft.Padding.only(left=16, right=16, top=16, bottom=28), content=ft.Column(
+                spacing=14, controls=[
+                    calc_section("1. Titolo di accesso", [c_voto, c_lode]),
+                    calc_section("2. Titoli aggiuntivi", [*c_extra.values(), c_master, c_lingua, c_dig, c_digedu]),
+                    calc_section("3. Servizio prestato", [
+                        ft.Text("Un inserimento per ogni anno scolastico (massimo 12 punti l'anno). Il servizio "
+                                "aspecifico, su un'altra classe di concorso o tipologia di posto, vale la metà.",
+                                size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Row(spacing=8, controls=[c_serv_type, c_serv_days]),
+                        ft.FilledTonalButton(content="Aggiungi anno", icon=ft.Icons.ADD_ROUNDED,
+                                             on_click=add_service),
+                        c_serv_list]),
+                    ft.FilledButton(content="Usa questo punteggio", icon=ft.Icons.CHECK_ROUNDED, height=50,
+                                    on_click=use_score),
+                    ft.Text("Calcolo indicativo con le regole dell'OM 27/2026 come riportate qui: controlla sempre "
+                            "la domanda e i titoli valutabili sul sito del Ministero.", size=11.5,
+                            color=ft.Colors.ON_SURFACE_VARIANT),
+                ])),
+        ])
+        calc_view = ft.Column(expand=True, spacing=0, visible=False, controls=[calc_header, calc_body])
 
         def on_search_change(e):
             clear_button.visible = bool(search_input.value)
@@ -2081,7 +2444,7 @@ def build(page: ft.Page, raw_prefs=None):
         home_view = ft.Column(expand=True, spacing=0, controls=[header, filters, status_row, results])
         paint_pills()
         refresh_classes_text()
-        page.add(home_view, gps_view)
+        page.add(home_view, gps_view, calc_view)
         load_results(reset=True)
 
         # Primo avvio: se non c'è ancora nulla, scarica subito.
