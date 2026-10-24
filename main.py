@@ -704,6 +704,28 @@ NOTICE_LINK_RE = re.compile(r"\b(?:interpell\w*|supplenz\w*|avvis\w*|graduatori\
                             r"collaborator\w*|assistent\w*|disponibilit\w*)\b", re.I)
 
 
+SOURCE_LOG = {}          # nome fonte -> {"ok", "found", "new", "err"} dell'ultimo aggiornamento
+
+
+def short_error(ex):
+    code = getattr(ex, "code", None)
+    if code:
+        return f"errore HTTP {code}"
+    reason = getattr(ex, "reason", None) or ex
+    text = str(reason).strip() or type(ex).__name__
+    return text[:70]
+
+
+def log_source(name, ok=None, found=0, new=0, err=""):
+    e = SOURCE_LOG.setdefault(name, {"ok": False, "found": 0, "new": 0, "err": ""})
+    if ok:
+        e["ok"], e["err"] = True, ""
+    elif err and not e["ok"]:
+        e["err"] = err
+    e["found"] += found
+    e["new"] += new
+
+
 def parse_source_page(region, source_name, url, known):
     """Scarica una pagina-fonte e restituisce (nuovi_interpelli, raggiungibile).
 
@@ -713,7 +735,8 @@ def parse_source_page(region, source_name, url, known):
     items = []
     try:
         html_content = fetch_url(url)
-    except Exception:
+    except Exception as ex:
+        log_source(source_name, err=short_error(ex))
         return [], False
 
     lower_content = html_content.lower()
@@ -781,6 +804,7 @@ def parse_source_page(region, source_name, url, known):
 
         results.append((title, link, region, source_name, target, published, info["deadline"], cdc, post_type,
                         info["doc_url"], info["email"]))
+    log_source(source_name, ok=True, found=len(items), new=len(results))
     return results, True
 
 
@@ -994,6 +1018,20 @@ def gps_points_service(days, specific=True):
     return 0.0
 
 
+def _place_slug(text):
+    import unicodedata
+    t = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode().lower()
+    t = re.sub(r"\b(e|di|del|della|d)\b", " ", t)
+    return re.sub(r"[^a-z]", "", t)
+
+
+def source_provinces(source, province_names):
+    """Province GPS a cui corrisponde una fonte («USP Chieti e Pescara» -> Chieti, Pescara)."""
+    name = re.sub(r"^(USP|AT|UST|Ambito territoriale)\s+", "", source or "", flags=re.I)
+    slug = _place_slug(name)
+    return [p for p in province_names if len(_place_slug(p)) >= 4 and _place_slug(p) in slug]
+
+
 def gps_stats(data, cdc):
     """Nomine di una classe di concorso in tutta Italia: totali, per fascia e le province con più chiamati."""
     cdc = (cdc or "").strip().upper()
@@ -1045,7 +1083,8 @@ def build(page: ft.Page, raw_prefs=None):
 
         # ---- Preferenze dell'utente (classi di concorso, dati per le candidature)
         prefs = {"classes": [], "name": "", "phone": "", "gps_class": "", "gps_score": "",
-                 "fav": [], "applied": [], "profiles": [], "theme": "", "calc": {}}
+                 "fav": [], "applied": [], "profiles": [], "theme": "", "calc": {},
+                 "sources": [], "src_status": {}}
 
         store = ft.SharedPreferences()
 
@@ -1079,6 +1118,12 @@ def build(page: ft.Page, raw_prefs=None):
                                              and isinstance(p.get("c"), str) and isinstance(p.get("s"), str)][:8]
                     if isinstance(data.get("calc"), dict):
                         prefs["calc"] = data["calc"]
+                    if isinstance(data.get("sources"), list):
+                        prefs["sources"] = [{"n": str(x["n"])[:40], "u": str(x["u"])[:300]} for x in data["sources"]
+                                            if isinstance(x, dict) and x.get("n") and x.get("u")][:30]
+                    if isinstance(data.get("src_status"), dict):
+                        prefs["src_status"] = {k: v for k, v in data["src_status"].items()
+                                               if isinstance(k, str) and isinstance(v, dict)}
                     if data.get("theme") in ("light", "dark"):
                         prefs["theme"] = data["theme"]
                     for key in ("name", "phone", "gps_class", "gps_score"):
@@ -1116,6 +1161,7 @@ def build(page: ft.Page, raw_prefs=None):
         settings_button = tool_button(ft.Icons.TUNE_ROUNDED, "Le mie classi e i miei dati")
         refresh_button = tool_button(ft.Icons.SYNC_ROUNDED, "Cerca nuovi interpelli")
         reset_button = tool_button(ft.Icons.FILTER_ALT_OFF_ROUNDED, "Azzera i filtri", visible=False)
+        sources_button = tool_button(ft.Icons.RSS_FEED_ROUNDED, "Stato delle fonti")
 
         clear_button = ft.IconButton(icon=ft.Icons.CLOSE_ROUNDED, icon_size=18, visible=False,
                                      icon_color="#6B7280")
@@ -1203,6 +1249,7 @@ def build(page: ft.Page, raw_prefs=None):
                 make_pill("SAVED", "Salvati", ft.Icons.BOOKMARK_ROUNDED),
                 settings_button,
                 refresh_button,
+                sources_button,
                 reset_button,
             ],
         )
@@ -1281,6 +1328,10 @@ def build(page: ft.Page, raw_prefs=None):
 
         saved_tools = ft.Row(wrap=True, spacing=0, visible=False)
 
+        radar_button = ft.FilledTonalButton(
+            content="Radar: interpelli aperti per te, provincia per provincia",
+            icon=ft.Icons.RADAR_ROUNDED, expand=True, height=46)
+
         def saved_text():
             """Elenco degli interpelli salvati o a cui hai già risposto, da copiare o mandare a qualcuno."""
             urls = list(dict.fromkeys(prefs["fav"] + prefs["applied"]))
@@ -1330,6 +1381,7 @@ def build(page: ft.Page, raw_prefs=None):
                 spacing=10,
                 controls=[
                     gps_button,
+                    ft.Row(controls=[radar_button]),
                     pills_row,
                     classes_text,
                     saved_tools,
@@ -2552,6 +2604,10 @@ def build(page: ft.Page, raw_prefs=None):
                             for p in range(1, max_pages + 1):
                                 tasks_info.append((reg, source_name, get_page_url(base_url, p)))
 
+                    if not region or region == "Altre fonti":
+                        for custom in prefs["sources"]:
+                            tasks_info.append(("Altre fonti", custom["n"], custom["u"]))
+                    SOURCE_LOG.clear()
                     total = len(tasks_info)
                     completed = 0
                     last_ui = 0.0
@@ -2606,6 +2662,12 @@ def build(page: ft.Page, raw_prefs=None):
                     print(f"Errore scraping: {ex}")
                     notify("Aggiornamento interrotto da un errore.")
                 finally:
+                    try:
+                        prefs["src_status"].update({k: dict(v, t=date.today().isoformat())
+                                                    for k, v in SOURCE_LOG.items()})
+                        save_prefs()
+                    except Exception:
+                        pass
                     state["refreshing"] = False
                     progress_bar.visible = False
                     refresh_button.disabled = False
@@ -2625,7 +2687,310 @@ def build(page: ft.Page, raw_prefs=None):
         home_view = ft.Column(expand=True, spacing=0, controls=[header, filters, status_row, results])
         paint_pills()
         refresh_classes_text()
-        page.add(home_view, gps_view, calc_view)
+        # ---- Radar opportunità: interpelli aperti per le tue classi + esito GPS per provincia ----
+        r_score = ft.TextField(label="Il tuo punteggio GPS (facoltativo)", hint_text="es. 42,5", expand=True,
+                               keyboard_type=ft.KeyboardType.NUMBER, border_radius=14, dense=True)
+        r_fascia = ft.Dropdown(label="Fascia", value="II", expand=True, dense=True, border_radius=14,
+                               options=[ft.DropdownOption(key=k, text=v) for k, v in GPS_FASCE.items()])
+        r_summary = ft.Text("", size=13, weight=ft.FontWeight.W_700, color=ft.Colors.WHITE)
+        r_list = ft.Column(spacing=10)
+
+        def close_radar(e=None):
+            radar_view.visible = False
+            home_view.visible = True
+            page.update()
+
+        def radar_see(name):
+            state["profile"] = "ME"
+            search_input.value = name
+            clear_button.visible = True
+            paint_pills()
+            radar_view.visible = False
+            home_view.visible = True
+            load_results(reset=True)
+
+        def paint_radar(e=None):
+            num = parse_score(r_score.value or "")
+            if num is not None:
+                prefs["gps_score"] = (r_score.value or "").strip().replace(",", ".")
+                save_prefs()
+            classes = prefs["classes"]
+            r_list.controls = []
+            if not classes:
+                r_summary.value = ""
+                r_list.controls = [section_card([
+                    ft.Text("Prima scegli le tue classi di concorso (tasto «Le mie classi» nella schermata "
+                            "principale): il radar mostra solo gli interpelli per te.", size=13)])]
+                page.update()
+                return
+            fascia = r_fascia.value or "II"
+            ranks = {}
+            if num is not None and gps_data:
+                for c in classes:
+                    ranks[c] = {r["provincia"]: r for r in gps_rank(gps_data, c, fascia, num, "",
+                                                                    riserva=GPS_RISERVA)}
+            province_names = sorted(gps_data.get("province", {}))
+            today_s = date.today().strftime("%Y-%m-%d")
+            conn = db_connect()
+            rows = conn.execute(
+                "SELECT title, source, cdc FROM interpelli WHERE target = 'DOCENTI' "
+                "AND (deadline IS NULL OR deadline = '' OR deadline >= ?)", (today_s,)).fetchall()
+            conn.close()
+            groups = {}
+            for title, source, cdc in rows:
+                if not matches_classes(title, cdc, classes):
+                    continue
+                g = groups.setdefault(source, {"n": 0, "esiti": []})
+                g["n"] += 1
+                codes = [x.strip() for x in (cdc or "").upper().split(",")]
+                mine = [c for c in classes if c in codes or re.search(rf"\b{re.escape(c)}\b", (title or "").upper())]
+                for prov in source_provinces(source, province_names):
+                    for c in mine:
+                        r = ranks.get(c, {}).get(prov)
+                        if r:
+                            g["esiti"].append(r["esito"])
+            order = {"si": 0, "forse": 1, "no": 2, None: 3}
+            items = []
+            for source, g in groups.items():
+                best = min(g["esiti"], key=lambda x: order[x]) if g["esiti"] else None
+                items.append((order[best], -g["n"], source, g["n"], best))
+            items.sort()
+            total = sum(i[3] for i in items)
+            yes = sum(1 for i in items if i[4] == "si")
+            r_summary.value = (f"{total} interpelli aperti per te in {len(items)} province"
+                               + (f" · in {yes} ci saresti" if num is not None and gps_data else ""))
+            if not items:
+                r_list.controls = [section_card([ft.Text(
+                    "Nessun interpello aperto per le tue classi. Aggiorna la ricerca dalla schermata principale.",
+                    size=13)])]
+            for _o, _n, source, n, best in items:
+                label = re.sub(r"^(USP|AT)\s+", "", source, flags=re.I)
+                color, verdict = {
+                    "si": (GREEN, "Ci saresti"), "forse": ("#E08A00", "Forse"),
+                    "no": (ft.Colors.ERROR, "Troppo alto"), None: (ft.Colors.OUTLINE, "Esito GPS non disponibile"),
+                }[best]
+                if num is None:
+                    color, verdict = ft.Colors.OUTLINE, "Inserisci il punteggio per l'esito"
+                r_list.controls.append(ft.Container(
+                    border_radius=18, clip_behavior=ft.ClipBehavior.HARD_EDGE, ink=True,
+                    bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
+                    on_click=lambda ev, name=label: radar_see(name),
+                    content=ft.Row(spacing=0, controls=[
+                        ft.Container(width=6, bgcolor=color, height=64),
+                        ft.Container(expand=True, padding=ft.Padding.symmetric(horizontal=14, vertical=10),
+                                     content=ft.Row(vertical_alignment=ft.CrossAxisAlignment.CENTER, controls=[
+                                         ft.Column(expand=True, spacing=1, controls=[
+                                             ft.Text(label, size=15, weight=ft.FontWeight.W_800),
+                                             ft.Text(verdict, size=12, weight=ft.FontWeight.W_700, color=color)]),
+                                         ft.Column(spacing=0, horizontal_alignment=ft.CrossAxisAlignment.END,
+                                                   controls=[ft.Text(str(n), size=22, weight=ft.FontWeight.W_800),
+                                                             ft.Text("interpelli", size=11,
+                                                                     color=ft.Colors.ON_SURFACE_VARIANT)]),
+                                         ft.Icon(ft.Icons.CHEVRON_RIGHT_ROUNDED, color=ft.Colors.OUTLINE)]))])))
+            page.update()
+
+        def open_radar(e=None):
+            r_score.value = prefs["gps_score"]
+            r_fascia.value = gps_fascia.value or "II"
+            home_view.visible = False
+            radar_view.visible = True
+            paint_radar()
+
+        radar_button.on_click = open_radar
+        r_score.on_submit = paint_radar
+        r_fascia.on_select = paint_radar
+
+        radar_header = ft.Container(
+            gradient=ft.LinearGradient(begin=ft.Alignment.TOP_LEFT, end=ft.Alignment.BOTTOM_RIGHT,
+                                       colors=[BRAND_DARK, BRAND_LIGHT]),
+            padding=ft.Padding.only(left=6, right=18, top=18, bottom=18),
+            border_radius=ft.BorderRadius.only(bottom_left=28, bottom_right=28),
+            content=ft.Column(spacing=4, controls=[
+                ft.Row(vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=4, controls=[
+                    ft.IconButton(icon=ft.Icons.ARROW_BACK_ROUNDED, icon_color=ft.Colors.WHITE, icon_size=26,
+                                  tooltip="Indietro", on_click=close_radar),
+                    ft.Column(expand=True, spacing=0, controls=[
+                        ft.Text("Radar opportunità", size=20, weight=ft.FontWeight.W_800, color=ft.Colors.WHITE),
+                        ft.Text("Interpelli aperti per le tue classi + il tuo esito nelle GPS", size=12,
+                                color=ft.Colors.with_opacity(0.88, ft.Colors.WHITE))])]),
+                ft.Container(padding=ft.Padding.only(left=16), content=r_summary)]))
+
+        radar_body = ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, controls=[
+            ft.Container(padding=ft.Padding.only(left=16, right=16, top=16, bottom=28), content=ft.Column(
+                spacing=14, controls=[
+                    section_card([
+                        ft.Text("Con il tuo punteggio vedo in quali province, tra quelle con interpelli aperti, "
+                                "saresti già chiamato dalle GPS. Tocca una provincia per vedere i suoi interpelli.",
+                                size=12.5, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Row(spacing=10, controls=[r_score, r_fascia]),
+                        ft.FilledTonalButton(content="Aggiorna", icon=ft.Icons.REFRESH_ROUNDED, on_click=paint_radar)]),
+                    r_list]))])
+        radar_view = ft.Column(expand=True, spacing=0, visible=False, controls=[radar_header, radar_body])
+
+        _go_back_inner = go_back
+
+        def go_back(e=None):
+            if radar_view.visible:
+                close_radar()
+                return True
+            return _go_back_inner(e)
+
+        for _name in ("on_back_button", "on_view_pop"):
+            try:
+                setattr(page, _name, go_back)
+            except Exception:
+                pass
+
+        # ---- Stato delle fonti e fonti personali -------------------------------------------
+        sv_name = ft.TextField(label="Nome (es. IC Rossi)", dense=True, border_radius=14)
+        sv_url = ft.TextField(label="Indirizzo della pagina o del feed RSS", dense=True, border_radius=14,
+                              keyboard_type=ft.KeyboardType.URL)
+        sv_summary = ft.Text("", size=13, weight=ft.FontWeight.W_700, color=ft.Colors.WHITE)
+        sv_list = ft.Column(spacing=8)
+        sv_hint = ft.Text("", size=12, color=ft.Colors.ERROR)
+
+        def source_state(name):
+            st = prefs["src_status"].get(name)
+            if not st:
+                return 3, ft.Colors.OUTLINE, "Mai controllata: tocca «Cerca nuovi interpelli»"
+            if not st.get("ok"):
+                return 0, ft.Colors.ERROR, f"Non risponde: {st.get('err') or 'errore sconosciuto'}"
+            if not st.get("found"):
+                return 1, "#E08A00", "Risponde ma non trova avvisi (pagina cambiata o nessun interpello)"
+            return 2, GREEN, f"{st['found']} avvisi trovati" + (f", {st['new']} nuovi" if st.get("new") else "")
+
+        def sources_report():
+            lines = []
+            names = [n for srcs in SOURCES.values() for n, *_ in srcs] + [c["n"] for c in prefs["sources"]]
+            for n in names:
+                o, _c, msg = source_state(n)
+                if o <= 1:
+                    lines.append(f"- {n}: {msg}")
+            return "Fonti con problemi:\n" + "\n".join(lines) if lines else "Tutte le fonti rispondono."
+
+        def paint_sources():
+            entries = []
+            for reg, srcs in SOURCES.items():
+                for n, u, *_ in srcs:
+                    entries.append((n, u, False))
+            entries += [(c["n"], c["u"], True) for c in prefs["sources"]]
+            ranked = sorted(entries, key=lambda x: (source_state(x[0])[0], x[0]))
+            counts = [0, 0, 0, 0]
+            rows = []
+            for n, u, is_custom in ranked:
+                o, color, msg = source_state(n)
+                counts[o] += 1
+                trailing = []
+                if is_custom:
+                    trailing.append(ft.IconButton(icon=ft.Icons.DELETE_OUTLINE_ROUNDED, icon_size=20,
+                                                  tooltip="Togli la fonte",
+                                                  on_click=lambda e, n=n: remove_source(n)))
+                rows.append(ft.Container(
+                    border_radius=14, padding=ft.Padding.symmetric(horizontal=12, vertical=8),
+                    bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
+                    content=ft.Row(spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER, controls=[
+                        ft.Container(width=10, height=10, border_radius=5, bgcolor=color),
+                        ft.Column(expand=True, spacing=0, controls=[
+                            ft.Text(n + ("  (tua)" if is_custom else ""), size=13.5, weight=ft.FontWeight.W_700),
+                            ft.Text(msg, size=11.5, color=ft.Colors.ON_SURFACE_VARIANT)]),
+                        *trailing])))
+            sv_list.controls = rows
+            sv_summary.value = (f"{counts[2]} funzionano · {counts[1]} senza avvisi · {counts[0]} non rispondono"
+                                + (f" · {counts[3]} da controllare" if counts[3] else ""))
+
+        def add_source(e=None):
+            name = (sv_name.value or "").strip()
+            url = (sv_url.value or "").strip()
+            if not name or not re.match(r"^https?://\S+\.\S+", url):
+                sv_hint.value = "Scrivi un nome e un indirizzo completo che inizi con https://"
+                page.update()
+                return
+            if any(c["n"].lower() == name.lower() for c in prefs["sources"]) or \
+               any(name.lower() == n.lower() for srcs in SOURCES.values() for n, *_ in srcs):
+                sv_hint.value = "Esiste già una fonte con questo nome."
+                page.update()
+                return
+            prefs["sources"] = (prefs["sources"] + [{"n": name[:40], "u": url[:300]}])[:30]
+            sv_name.value = sv_url.value = ""
+            sv_hint.value = ""
+            save_prefs()
+            paint_sources()
+            page.update()
+            notify("Fonte aggiunta: la leggo al prossimo «Cerca nuovi interpelli».")
+
+        def remove_source(name):
+            prefs["sources"] = [c for c in prefs["sources"] if c["n"] != name]
+            prefs["src_status"].pop(name, None)
+            save_prefs()
+            paint_sources()
+            page.update()
+
+        def copy_report(e=None):
+            try:
+                page.run_task(clipboard.set, sources_report())
+                notify("Rapporto copiato.")
+            except Exception:
+                notify("Copia non riuscita.")
+
+        def close_sources(e=None):
+            sources_view.visible = False
+            home_view.visible = True
+            page.update()
+
+        def open_sources(e=None):
+            paint_sources()
+            home_view.visible = False
+            sources_view.visible = True
+            page.update()
+
+        sources_button.on_click = open_sources
+
+        sources_header = ft.Container(
+            gradient=ft.LinearGradient(begin=ft.Alignment.TOP_LEFT, end=ft.Alignment.BOTTOM_RIGHT,
+                                       colors=[BRAND_DARK, BRAND_LIGHT]),
+            padding=ft.Padding.only(left=6, right=18, top=18, bottom=18),
+            border_radius=ft.BorderRadius.only(bottom_left=28, bottom_right=28),
+            content=ft.Column(spacing=4, controls=[
+                ft.Row(vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=4, controls=[
+                    ft.IconButton(icon=ft.Icons.ARROW_BACK_ROUNDED, icon_color=ft.Colors.WHITE, icon_size=26,
+                                  tooltip="Indietro", on_click=close_sources),
+                    ft.Column(expand=True, spacing=0, controls=[
+                        ft.Text("Fonti degli interpelli", size=20, weight=ft.FontWeight.W_800,
+                                color=ft.Colors.WHITE),
+                        ft.Text("Quali siti rispondono e quali no", size=12,
+                                color=ft.Colors.with_opacity(0.88, ft.Colors.WHITE))])]),
+                ft.Container(padding=ft.Padding.only(left=16), content=sv_summary)]))
+
+        sources_body = ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, controls=[
+            ft.Container(padding=ft.Padding.only(left=16, right=16, top=16, bottom=28), content=ft.Column(
+                spacing=14, controls=[
+                    section_card([
+                        ft.Text("Aggiungi una fonte", size=14, weight=ft.FontWeight.W_700),
+                        ft.Text("Incolla l'indirizzo della pagina degli interpelli di una scuola, di un ambito o di un "
+                                "ufficio, meglio se è un feed RSS (di solito finisce con /feed/). L'app la leggerà "
+                                "insieme alle altre.", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                        sv_name, sv_url, sv_hint,
+                        ft.FilledButton(content="Aggiungi", icon=ft.Icons.ADD_ROUNDED, on_click=add_source)]),
+                    ft.TextButton(content="Copia l'elenco delle fonti con problemi",
+                                  icon=ft.Icons.CONTENT_COPY_ROUNDED, on_click=copy_report),
+                    sv_list]))])
+        sources_view = ft.Column(expand=True, spacing=0, visible=False, controls=[sources_header, sources_body])
+
+        _go_back_radar = go_back
+
+        def go_back(e=None):
+            if sources_view.visible:
+                close_sources()
+                return True
+            return _go_back_radar(e)
+
+        for _name in ("on_back_button", "on_view_pop"):
+            try:
+                setattr(page, _name, go_back)
+            except Exception:
+                pass
+
+        page.add(home_view, gps_view, calc_view, radar_view, sources_view)
         load_results(reset=True)
 
         # Primo avvio: se non c'è ancora nulla, scarica subito.
