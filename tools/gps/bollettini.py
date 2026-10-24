@@ -57,7 +57,10 @@ ROW_LAYOUT = re.compile(
 POS_SCORE = re.compile(r"\s(?P<pos>\d{1,5})\s+(?P<score>\d{1,3}(?:[.,]\d{1,3})?)\s+[NSR]\s?-")
 # formato con riga della classe e riga dei dati separate (pdftotext -raw)
 CLASS_LINE = re.compile(r"^(?P<cdc>" + CLASS_RE + r")\s+-\s+\S")
-ROW_RAW = re.compile(r"^(?P<tipo>GPS|GAE)\s+F(?P<fascia>\d)\s+(?P<pos>\d{1,5})\s+(?P<score>\d{1,3}(?:[.,]\d{1,3})?)\s")
+ROW_RAW = re.compile(r"^(?P<tipo>GPS|GAE)\s+F(?P<fascia>\d)\s+(?P<pos>\d{1,5})\s+(?P<score>\d{1,3}(?:[.,]\d{1,3})?)(?:\s|$)")
+# formato CSV stampato nel PDF: classe;GPS;F1;;;;;posizione;punteggio;...
+ROW_CSV = re.compile(r"^(?P<cdc>" + CLASS_RE + r") - [^;]*;(?P<tipo>GPS|GAE|GUI);F(?P<fascia>\d);(?:[^;]*;){4}"
+                     r"(?P<pos>\d{1,5});(?P<score>\d{1,3}(?:[.,]\d{1,3})?);")
 
 
 def pdf_text(path, raw):
@@ -76,6 +79,12 @@ def parse_rows(text):
     cur = None
     for line in text.splitlines():
         line = line.rstrip()
+        m = ROW_CSV.match(line)
+        if m:
+            if m["tipo"] == "GPS":
+                rows.append((m["cdc"], "I" if m["fascia"] == "1" else "II",
+                             int(m["pos"]), float(m["score"].replace(",", "."))))
+            continue
         m = ROW_LAYOUT.match(line) if line[:1].strip() else None
         if m:
             cur = None
@@ -97,6 +106,61 @@ def parse_rows(text):
     return rows
 
 
+def _norm(s):
+    return re.sub(r"[^a-z]", "", (s or "").lower())
+
+
+def _colmap(hdr):
+    m = {}
+    for i, c in enumerate(hdr):
+        n = _norm(c)
+        if n in ("classediconcorso", "cc", "cdc"):
+            m["cdc"] = i
+        elif n.startswith("tipograduat") or n.startswith("tipogr"):
+            m["tipo"] = i
+        elif n.startswith("fasci"):
+            m.setdefault("fascia", i)
+        elif (n.startswith("posi") or n == "pos") and "origine" not in n:
+            m.setdefault("pos", i)
+        elif n.startswith("punteg") or n == "punti":
+            m.setdefault("score", i)
+        elif n == "codicescuola":
+            m["school"] = i
+    return m if {"cdc", "tipo", "fascia", "pos", "score"} <= set(m) else None
+
+
+def parse_tables(path):
+    """Per i bollettini con tabelle a griglia (celle su più righe): legge le colonne dall'intestazione.
+    Restituisce (righe GPS, codici scuola trovati)."""
+    try:
+        import pdfplumber
+    except ImportError:
+        return [], []
+    rows, schools, cm = [], [], None
+    with pdfplumber.open(path) as pdf:
+        for pg in pdf.pages:
+            for t in pg.extract_tables():
+                for r in t:
+                    h = _colmap(r)
+                    if h:
+                        cm = h
+                        continue
+                    if not cm or len(r) <= max(cm.values()):
+                        continue
+                    cell = {k: (r[i] or "").replace("\n", " ").strip() for k, i in cm.items()}
+                    mc = re.match(r"^(" + CLASS_RE + r")\b", cell["cdc"])
+                    mf = re.match(r"^F?(\d)$", cell["fascia"])
+                    if not (mc and mf and cell["tipo"] == "GPS"
+                            and re.fullmatch(r"\d{1,5}", cell["pos"])
+                            and re.fullmatch(r"\d{1,3}(?:[.,]\d{1,3})?", cell["score"])):
+                        continue
+                    rows.append((mc.group(1), "I" if mf.group(1) == "1" else "II",
+                                 int(cell["pos"]), float(cell["score"].replace(",", "."))))
+                    if cell.get("school"):
+                        schools.append(cell["school"])
+    return rows, schools
+
+
 def pdf_date(path):
     """Data di creazione del PDF (YYYY-MM-DD) o None."""
     from datetime import datetime
@@ -114,18 +178,78 @@ def pdf_date(path):
     return None
 
 
+def read_xlsx(path):
+    """Bollettino in Excel (.xlsx / .xlsm: le macro non vengono mai eseguite, si leggono solo i valori)."""
+    from openpyxl import load_workbook
+    rows, schools = [], []
+    wb = load_workbook(path, read_only=True, data_only=True, keep_vba=False)
+    for ws in wb.worksheets:
+        cm = None
+        for r in ws.iter_rows(values_only=True):
+            r = ["" if c is None else str(c).strip() for c in r]
+            h = _colmap(r)
+            if h:
+                cm = h
+                continue
+            if not cm or len(r) <= max(cm.values()):
+                continue
+            mc = re.match(r"^(" + CLASS_RE + r")\b", r[cm["cdc"]])
+            mf = re.match(r"^F?(\d)$", r[cm["fascia"]])
+            pos = re.sub(r"\.0$", "", r[cm["pos"]])
+            score = r[cm["score"]]
+            if not (mc and mf and r[cm["tipo"]] == "GPS" and re.fullmatch(r"\d{1,5}", pos)
+                    and re.fullmatch(r"\d{1,3}(?:[.,]\d{1,3})?", score)):
+                continue
+            rows.append((mc.group(1), "I" if mf.group(1) == "1" else "II", int(pos), float(score.replace(",", "."))))
+            if cm.get("school"):
+                schools.append(r[cm["school"]])
+    wb.close()
+    siglas = [m.group(1) for c in schools for m in [SCHOOL_RE.search(c)] if m and m.group(1) in SIGLE]
+    return (max(set(siglas), key=siglas.count) if siglas else None), rows
+
+
 def read_pdf(path):
     """Legge un bollettino. Restituisce (sigla_provincia, righe). Un bollettino riguarda una sola provincia:
     la sigla è quella più frequente tra i codici delle scuole."""
+    if str(path).lower().endswith((".xlsx", ".xlsm")):
+        return read_xlsx(path)
     best_rows, best_text = [], ""
     for raw in (False, True):
-        text = pdf_text(path, raw)
+        text = pdf_text(path, raw).replace("\x00", "")
         rows = parse_rows(text)
         if len(rows) > len(best_rows):
             best_rows, best_text = rows, text
     siglas = _school_siglas(best_text)
+    t_rows, t_schools = parse_tables(path)
+    if len(t_rows) > len(best_rows):
+        best_rows = t_rows
+        siglas = [m.group(1) for c in t_schools for m in [SCHOOL_RE.search(c)] if m and m.group(1) in SIGLE] or siglas
     sigla = max(set(siglas), key=siglas.count) if siglas else None
     return sigla, best_rows
+
+
+def _slug(text):
+    import unicodedata
+    t = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+    t = re.sub(r"\b(e|di|del|della|d)\b", " ", t)
+    return re.sub(r"[^a-z]", "", t)
+
+
+def sigla_from_name(path):
+    """Ultima risorsa quando il bollettino non ha il codice scuola: il nome del file («Ragusa1.pdf», «Pesaro_Urbino1.pdf.pdf»)."""
+    name = re.sub(r"^.*[\\/]", "", str(path))
+    name = re.sub(r"(\.(pdf|xlsx?|xlsm))+$", "", name, flags=re.I)
+    name = re.sub(r"[\s._-]*(boll(ettino)?.*)?\d*$", "", name, flags=re.I)
+    slug = _slug(name)
+    if len(slug) < 4:
+        return None
+    for sigla, (prov, _reg) in SIGLE.items():
+        if _slug(prov) == slug:
+            return sigla
+    for sigla, (prov, _reg) in SIGLE.items():
+        if _slug(prov).startswith(slug) or slug.startswith(_slug(prov)):
+            return sigla
+    return None
 
 
 def turn_from_name(path):

@@ -45,7 +45,7 @@ def main(argv=None):
     paths = list(args.pdf)
     if args.cartella:
         for root, _dirs, files in os.walk(args.cartella):
-            paths += [os.path.join(root, f) for f in files if f.lower().endswith(".pdf")]
+            paths += [os.path.join(root, f) for f in files if f.lower().endswith((".pdf", ".xlsx", ".xlsm"))]
     paths = sorted(set(paths))
     if not paths:
         print("Nessun PDF trovato.", file=sys.stderr)
@@ -57,11 +57,11 @@ def main(argv=None):
     for path in paths:
         try:
             sigla, rows = bollettini.read_pdf(path)
-        except (OSError, subprocess.CalledProcessError):
-            print(f"ATTENZIONE {os.path.basename(path)}: PDF non leggibile: file saltato", file=sys.stderr)
+        except Exception:
+            print(f"ATTENZIONE {os.path.basename(path)}: file non leggibile: file saltato", file=sys.stderr)
             failed += 1
             continue
-        sigla = (args.provincia or sigla or "").upper()
+        sigla = (args.provincia or sigla or bollettini.sigla_from_name(path) or "").upper()
         if sigla not in bollettini.SIGLE or not rows:
             print(f"ATTENZIONE {os.path.basename(path)}: "
                   + ("provincia non riconosciuta (usa --provincia)" if rows else "nessuna riga GPS trovata")
