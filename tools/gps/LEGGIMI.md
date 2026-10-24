@@ -29,7 +29,7 @@ A mano (serve `pdftotext`, pacchetto *poppler-utils*):
 - Fascia I e II hanno punteggi non confrontabili e sono tenute separate.
 
 ## Riserva servizio civile (15%)
-La riserva copre **al massimo il 15% dei posti di quel turno, per classe di concorso**: l'algoritmo
+La riserva copre **il 15% dei chiamati di quella classe in quel bollettino (le due fasce insieme, arrotondato per difetto: 20 chiamati = 3 posti)**: l'algoritmo
 scorre la graduatoria per punteggio e «salta» ai riservisti solo finché la quota non è raggiunta.
 I bollettini non dicono chi sono i riservisti (colonne oscurate), quindi l'app mostra due soglie:
 
