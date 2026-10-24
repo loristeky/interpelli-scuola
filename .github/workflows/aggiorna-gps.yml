@@ -1,6 +1,6 @@
 name: Aggiorna dati GPS
 
-# Si avvia da solo quando carichi bollettini PDF nella cartella "bollettini".
+# Si avvia da solo quando carichi bollettini (PDF o Excel) nella cartella "bollettini".
 # Legge i PDF, aggiorna assets/gps_data.json e cancella i PDF letti (contengono nomi di persone).
 # Istruzioni: bollettini/LEGGIMI.md
 
@@ -10,6 +10,8 @@ on:
     paths:
       - 'bollettini/**.pdf'
       - 'bollettini/**.PDF'
+      - 'bollettini/**.xlsx'
+      - 'bollettini/**.xlsm'
   workflow_dispatch:
 
 concurrency:
@@ -29,8 +31,10 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Installa pdftotext
-        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - name: Installa gli strumenti di lettura
+        run: |
+          sudo apt-get update && sudo apt-get install -y poppler-utils
+          pip install pdfplumber openpyxl
 
       - name: Leggi i bollettini
         run: |
