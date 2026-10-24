@@ -908,21 +908,25 @@ def fmt_score(value):
     return f"{value:g}".replace(".", ",")
 
 
-def gps_threshold(entry, riserva=0.0):
+def gps_threshold(entry, riserva=0.0, totals=None):
     """(soglia, posizione, nomine, escluse, minima).
-    soglia = punteggio dell'ultimo nominato dopo aver tolto, turno per turno, al massimo la quota riservata
-    (i punteggi più bassi); con più turni vale il punteggio più basso raggiunto.
+    La riserva del 15% si calcola sul totale dei chiamati della classe in quel bollettino (tutte le fasce insieme,
+    `totals` = {turno: chiamati}), arrotondato per difetto: 20 chiamati -> 3 posti riservati. Non si sa chi sono i
+    riservisti, quindi per prudenza si tolgono, in quel turno, i punteggi più bassi della fascia (mai tutti).
+    soglia = punteggio dell'ultimo nominato rimasto; con più turni vale il più basso raggiunto.
     minima = punteggio dell'ultimo nominato in assoluto. Senza elenco dei punteggi soglia = minima."""
     n = int(entry["n"])
     minima = float(entry["min"])
-    turns = entry.get("t") or ([{"s": entry["s"]}] if entry.get("s") else [])
+    turns = entry.get("t") or ([{"b": "1", "s": entry["s"]}] if entry.get("s") else [])
     if not turns or riserva <= 0:
         return minima, int(entry.get("pos", 0)), n, 0, minima
+    pct = int(round(riserva * 100))
     best, escluse = None, 0
     for t in turns:
         ordered = sorted(t["s"], key=lambda x: (-x[0], x[1]))
-        skip = int(len(ordered) * riserva)             # quota riservata del turno, arrotondata per difetto
-        kept = ordered[:max(1, len(ordered) - skip)]
+        total = (totals or {}).get(t.get("b"), len(ordered))
+        skip = min(total * pct // 100, len(ordered) - 1)   # interi: nessun errore di arrotondamento
+        kept = ordered[:len(ordered) - skip]
         escluse += len(ordered) - len(kept)
         last = kept[-1]
         if best is None or last[0] < best[0]:
@@ -934,16 +938,23 @@ def gps_rank(data, cdc, fascia, score, region="", riserva=0.0):
     """Confronta il punteggio con quello dell'ultimo nominato di ogni provincia.
     esito: "si" (ci saresti anche con la riserva piena), "forse" (dipende da quanti riservisti sono entrati),
     "no". Prima i "si" (margine maggiore per primi), poi i "forse", poi i "no" (i più vicini per primi)."""
-    key = f"{(cdc or '').strip().upper()}:{fascia}"
+    cdc = (cdc or "").strip().upper()
+    key = f"{cdc}:{fascia}"
     rows = []
     for prov, info in data.get("province", {}).items():
         reg = info.get("regione", "")
         if region and reg != region:
             continue
-        entry = info.get("classi", {}).get(key)
+        classi = info.get("classi", {})
+        entry = classi.get(key)
         if not entry or not entry.get("n"):
             continue
-        soglia, ultima, n, escluse, minima = gps_threshold(entry, riserva)
+        # chiamati della classe per bollettino, con tutte le fasce: su questo totale si calcola il 15%
+        totals = {}
+        for f in GPS_FASCE:
+            for t in (classi.get(f"{cdc}:{f}") or {}).get("t", []):
+                totals[t.get("b")] = totals.get(t.get("b"), 0) + len(t["s"])
+        soglia, ultima, n, escluse, minima = gps_threshold(entry, riserva, totals)
         margin = round(score - soglia, 3)
         esito = "si" if margin >= 0 else ("forse" if score >= minima else "no")
         rows.append({"provincia": prov, "regione": reg, "soglia": soglia, "minima": minima,
@@ -1905,9 +1916,9 @@ def build(page: ft.Page, raw_prefs=None):
                                           icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
                                           on_click=lambda e: gps_open(GPS_LISTS_URL)),
                         ]),
-                        ft.Text("Riserva servizio civile: fino al 15% dei posti di ogni turno e classe. I bollettini "
-                                "non dicono chi sono, quindi «ci saresti» vale anche con la quota piena (tolgo il 15% "
-                                "dei punteggi più bassi); «forse» se il tuo punteggio basta solo se i riservisti sono "
+                        ft.Text("Riserva servizio civile: il 15% dei chiamati di ogni classe in ogni bollettino (es. 20 chiamati: 3 posti riservati). I bollettini "
+                                "non dicono chi sono, quindi «ci saresti» vale anche con la quota piena (tolgo quei posti "
+                                "dai punteggi più bassi); «forse» se il tuo punteggio basta solo se i riservisti sono "
                                 "stati meno.", size=11.5, color=ft.Colors.ON_SURFACE_VARIANT),
                         ft.Text("Solo le province con bollettini già caricati. Nei bollettini successivi si scende "
                                 "più in basso, quindi è una stima prudente. Fa fede l'Ufficio Scolastico della "
