@@ -2090,6 +2090,15 @@ def build(page: ft.Page, raw_prefs=None):
             open_url(url)
 
         gps_data = load_gps_data()
+
+        def gps_data_info():
+            prov = (gps_data or {}).get("province", {})
+            gui = sum(1 for v in prov.values() for k in v.get("classi", {}) if "#GUI" in k)
+            return {"province": len(prov), "gui": gui, "agg": (gps_data or {}).get("aggiornato", "?")}
+
+        def gps_data_text():
+            i = gps_data_info()
+            return f"dati del {i['agg']} · {i['province']} province · {i['gui']} graduatorie GUI"
         gps_fascia = ft.Dropdown(
             label="Fascia", value="II", expand=True, border_radius=14,
             options=[ft.DropdownOption(key=k, text=v) for k, v in GPS_FASCE.items()],
@@ -2304,9 +2313,13 @@ def build(page: ft.Page, raw_prefs=None):
                 if gps_province.value:
                     rows = [r for r in rows if r["provincia"] == gps_province.value]
                 gps_info.visible = True
-                if not rows:
-                    gps_info.value = (f"Nessuna nomina trovata per {cls} ({GPS_FASCE.get(fascia, '')}) nelle province "
-                                      "con dati. Controlla la sigla della classe o cambia fascia.")
+                if not rows and tipo == "GUI" and cls.startswith("AD") and not gps_data_info()["gui"]:
+                    gps_info.value = ("I dati caricati nell'app non contengono le graduatorie GUI (" + gps_data_text()
+                                      + "). Sostituisci il file assets/gps_data.json con quello nuovo e rifai la build.")
+                elif not rows:
+                    gps_info.value = (f"Nessuna nomina trovata per {cls}{' · ' + tipo if cls.startswith('AD') else ''} "
+                                      f"({GPS_FASCE.get(fascia, '')}) nelle province con dati. "
+                                      "Controlla la sigla della classe o cambia fascia.")
                 else:
                     yes = sum(1 for r in rows if r["esito"] == "si")
                     maybe = sum(1 for r in rows if r["esito"] == "forse")
@@ -2484,6 +2497,8 @@ def build(page: ft.Page, raw_prefs=None):
                                 "non dicono chi sono, quindi «ci saresti» vale anche con la quota piena (tolgo quei posti "
                                 "dai punteggi più bassi); «forse» se il tuo punteggio basta solo se i riservisti sono "
                                 "stati meno.", size=11.5, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text("Dati nell'app: " + gps_data_text(), size=11.5, weight=ft.FontWeight.W_700,
+                                color=ft.Colors.ON_SURFACE_VARIANT),
                         ft.Text("Solo le province con bollettini già caricati. Nei bollettini successivi si scende "
                                 "più in basso, quindi è una stima prudente. Fa fede l'Ufficio Scolastico della "
                                 "provincia.", size=11.5, color=ft.Colors.ON_SURFACE_VARIANT),
