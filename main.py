@@ -2126,6 +2126,17 @@ def build(page: ft.Page, raw_prefs=None):
                 pass
 
         gps_class_field.on_change = sync_tipo
+
+        def _keep(e=None):
+            """Registra la scelta fatta nei menù a tendina (alcune versioni non la inviano senza un gestore)."""
+            try:
+                page.update()
+            except Exception:
+                pass
+
+        for _dd in (gps_tipo, gps_fascia, gps_region, gps_province):
+            _dd.on_select = _keep
+        gps_riserva.on_change = _keep
         gps_profiles_row = ft.Row(wrap=True, spacing=6, run_spacing=6)
         gps_state = {"rows": {}}
 
