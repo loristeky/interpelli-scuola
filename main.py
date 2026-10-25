@@ -4,6 +4,7 @@ import json
 import re
 import html
 import ssl
+import socket
 import os
 import time
 import threading
@@ -32,68 +33,61 @@ SOURCES = {
     "Abruzzo": [
         ("USP Chieti e Pescara", "https://www.istruzionechietipescara.it/category/interpelli-provinciali/feed/", 1),
         ("USP Teramo", "https://www.csateramo.it/wpusp/interpelli", 1),
-        ("USP L'Aquila", "https://www.uspuquila.it/category/interpelli/feed/", 1)
+        ("USP L'Aquila", "https://lnx.csalaquila.it/wp/category/interpelli/feed/", 1)
     ],
     "Basilicata": [
-        ("USP Matera", "https://www.istruzionematera.it/category/interpelli/feed/", 1),
-        ("USP Potenza", "https://www.usppotenza.it/category/interpelli/feed/", 1)
+        ("USP Matera", "https://www.istruzionematera.it/category/interpelli/feed/", 1)
     ],
     "Calabria": [
-        ("USP Reggio Calabria", "https://www.usprc.it/category/interpelli/feed/", 1),
-        ("USP Catanzaro", "https://www.uspcatanzaro.it/category/interpelli/feed/", 1),
-        ("USP Cosenza", "https://www.uspcosenza.it/category/interpelli/feed/", 1)
+        ("USP Reggio Calabria", "https://www.istruzioneatprc.it/category/recl/int/feed/", 1),
+        ("USP Catanzaro", "https://www.istruzione.calabria.it/catanzaro/category/nca/feed/", 1),
+        ("USP Cosenza", "https://www.istruzione.calabria.it/cosenza/category/interdoc/feed/", 1)
     ],
     "Campania": [
-        ("USP Caserta", "https://www.atpcaserta.it/category/interpelli/feed/", 1),
-        ("USP Salerno", "https://www.atpsalerno.it/category/interpelli/feed/", 1),
-        ("USP Napoli", "https://www.ustnapoli.it/category/interpelli/feed/", 1)
+        ("USP Caserta", "https://www.uat-caserta.it/category/segnalazioni-dalle-scuole/feed/", 1),
+        ("USP Salerno", "https://uat-salerno.it/Documenti/CIRCOLARI/Interpelli-per-reclutamento-personale-docente", 1),
+        ("USP Napoli", "https://www.uat-napoli.it/tag/interpelli-personale-docente/feed/", 1)
     ],
     "Emilia-Romagna": [
-        ("USP Bologna", "https://interpelloweb.it/interpelli-supplenze/istituto/boss000vd8/", 1),
+        ("USP Bologna", "https://bo.istruzioneer.gov.it/category/docenti/feed/", 1),
         ("USP Ferrara", "https://fe.istruzioneer.gov.it/category/interpelli_docenti/", 1),
         ("USP Modena", "https://mo.istruzioneer.gov.it/category/interpelli-personale-docente-2026-27/", 1),
         ("USP Parma", "https://pr.istruzioneer.gov.it/interpelli-docenti/", 1),
-        ("USP Reggio Emilia", "https://re.istruzioneer.gov.it/tutte-le-notizie/", 1),
+        ("USP Reggio Emilia", "https://re.istruzioneer.gov.it/category/docenti/feed/", 1),
         ("USP Forlì Cesena", "https://fc.istruzioneer.gov.it/category/interpelli-a-s-2026-27/", 1),
         ("USP Piacenza", "https://pc.istruzioneer.gov.it/interpelli/", 1),
         ("USP Ravenna", "https://ra.istruzioneer.gov.it/conferimento-supplenze-per-esaurimento-graduatorie-di-istituto/", 1),
         ("USP Rimini", "https://rn.istruzioneer.gov.it/category/personale-docente/interpelli-docenti-2026-2027/", 1)
     ],
-    "Friuli-Venezia Giulia": [
-        ("USP Trieste", "https://usrfvg.gov.it/it/home/menu/uffici/ufficio-territoriale-di-trieste/Interpelli/index.html", 1),
-        ("USP Udine", "https://usrfvg.gov.it/it/home/menu/uffici/ufficio-territoriale-di-udine/Interpelli/index.html", 1),
-        ("USP Gorizia", "https://usrfvg.gov.it/it/home/menu/uffici/ufficio-territoriale-di-gorizia/Interpelli/", 1),
-        ("USP Pordenone", "https://usrfvg.gov.it/it/home/menu/uffici/ufficio-territoriale-di-pordenone/Interpelli/index.html", 1)
-    ],
     "Lazio": [
-        ("USP Frosinone", "https://www.atpfrosinone.it/category/interpelli/feed/", 1),
+        ("USP Frosinone", "https://lnx.uspistruzione.fr.it/wp2/category/interpello-nazionale/feed/", 1),
         ("USP Latina", "https://www.csalatina.it/category/interpelli/feed/", 1),
-        ("USP Roma", "https://www.atpromaistruzione.it/atp/category/interpelli/feed/", 1),
-        ("USP Viterbo", "https://www.uspviterbo.it/category/interpelli/feed/", 1)
+        ("USP Roma", "https://www.atpromaistruzione.it/atp/category/reclutamento/interpelli-personale-docente/feed/", 1),
+        ("USP Viterbo", "http://www.provveditoratostudiviterbo.it/DOCENTI/interpelli/INTERPELLIDOC.htm", 1)
     ],
     "Liguria": [
-        ("USP Genova", "https://servizi.istruzioneliguria.gov.it/provincia.php?provincia=GE", 1),
+        ("USP Genova", "https://servizi.istruzioneliguria.gov.it/provincia.php?p=GE", 1),
         ("USP La Spezia", "https://servizi.istruzioneliguria.gov.it/provincia.php?p=SP", 1),
-        ("USP Imperia", "https://www.istruzioneimperia.gov.it/pagine/interpelli-e-comunicati", 1),
-        ("USP Savona", "https://www.istruzionesavona.gov.it/pagine/interpelli-e-comunicati", 1)
+        ("USP Imperia", "https://servizi.istruzioneliguria.gov.it/provincia.php?p=IM", 1),
+        ("USP Savona", "https://servizi.istruzioneliguria.gov.it/provincia.php?p=SV", 1)
     ],
     "Lombardia": [
-        ("USP Milano", "https://www.mim.gov.it/web/milano/interpelli-ricerca-supplenti", 1),
-        ("USP Brescia", "https://www.mim.gov.it/web/brescia/interpelli-ricerca-supplenti", 1),
-        ("USP Bergamo", "https://www.mim.gov.it/web/bergamo/interpelli-ricerca-supplenti", 1),
-        ("USP Como", "https://www.mim.gov.it/web/como/interpelli-ricerca-supplenti", 1),
+        ("USP Milano", "https://milano.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/", 1),
+        ("USP Brescia", "https://brescia.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/", 1),
+        ("USP Bergamo", "https://bergamo.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/", 1),
+        ("USP Como", "https://como.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/", 1),
         ("USP Cremona", "https://www.mim.gov.it/web/cremona/interpelli-ricerca-supplenti", 1),
         ("USP Lecco", "https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti", 1),
         ("USP Lodi", "https://www.mim.gov.it/web/lodi/interpelli-ricerca-supplenti", 1),
         ("USP Mantova", "https://www.mim.gov.it/web/mantova/interpelli-ricerca-supplenti", 1),
         ("USP Monza brianza", "https://www.mim.gov.it/web/monza-brianza/interpelli-ricerca-supplenti", 1),
-        ("USP Pavia", "https://www.mim.gov.it/web/pavia/interpelli-ricerca-supplenti", 1),
+        ("USP Pavia", "https://pavia.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/", 1),
         ("USP Sondrio", "https://www.mim.gov.it/web/sondrio/interpelli-ricerca-supplenti", 1),
-        ("USP Varese", "https://www.mim.gov.it/web/varese/interpelli-ricerca-supplenti", 1)
+        ("USP Varese", "https://varese.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/", 1)
     ],
     "Marche": [
-        ("USP Ancona", "https://www.uspancona.it/category/interpelli/feed/", 1),
-        ("USP Macerata", "https://www.uspmacerata.it/category/interpelli/feed/", 1)
+        ("USP Ancona", "https://www.istruzione-ancona.it/category/docenti/feed/", 1),
+        ("USP Pesaro Urbino", "http://www.usppesarourbino.it/category/interpelli/feed/", 1)
     ],
     "Molise": [
         ("USP Campobasso", "https://www.uspcampobasso.it/category/interpelli/feed/", 1)
@@ -104,33 +98,33 @@ SOURCES = {
         ("USP Novara", "https://www.istruzionepiemonte.it/novara/category/interpelli/feed/", 1)
     ],
     "Puglia": [
-        ("USP Bari", "https://www.uspbari.it/category/interpelli/feed/", 1),
-        ("USP Foggia", "https://www.fg.usrpuglia.gov.it/category/interpelli/feed/", 1),
+        ("USP Bari", "https://www.uspbari.it/usp/category/interpelli-della-provincia-di-bari", 1),
+        ("USP Foggia", "https://www.ustfoggia.it/feed/", 1),
         ("USP Lecce", "https://www.usplecce.it/category/interpelli/feed/", 1),
-        ("USP Taranto", "https://www.usptaranto.it/category/interpelli/feed/", 1)
+        ("USP Taranto", "https://www.usptaranto.it/category/in-evidenza/", 1)
     ],
     "Sardegna": [
-        ("USP Cagliari", "https://www.uspcagliari.it/category/interpelli/feed/", 1),
-        ("USP Sassari", "https://www.uspsassari.it/category/interpelli/feed/", 1)
+        ("USP Sassari", "https://www.uspss.it/wordpress/nomine-a-t-d-usp-nazionali", 1)
     ],
     "Sicilia": [
-        ("USP Agrigento", "https://ag.usr.sicilia.it/category/interpelli/feed/", 1),
-        ("USP Caltanissetta-Enna", "https://cl-en.usr.sicilia.it/category/interpelli/feed/", 1),
+        ("USP Agrigento", "https://ag.usr.sicilia.it/category/personale-scuola/personale-docente/interpelli/", 1),
+        ("USP Caltanissetta-Enna", "https://cl-en.usr.sicilia.it/category/personale-scuola/personale-docente/", 1),
         ("USP Catania", "https://ct.usr.sicilia.it/category/interpelli/feed/", 1),
         ("USP Palermo", "https://pa.usr.sicilia.it/category/interpelli/feed/", 1),
-        ("USP Siracusa", "https://sr.usr.sicilia.it/category/interpelli/feed/", 1),
-        ("USP Trapani", "https://tp.usr.sicilia.it/category/interpelli/feed/", 1)
+        ("USP Siracusa", "https://sr.usr.sicilia.it/tag/interpelli/", 1),
+        ("USP Trapani", "https://tp.usr.sicilia.it/personale-scuola/interpelli/", 1),
+        ("USP Messina", "https://me.usr.sicilia.it/personale-scuola/interpelli/", 1)
     ],
     "Toscana": [
-        ("USP Firenze", "https://www.toscana.istruzione.it/category/usp-firenze/interpelli/feed/", 1),
-        ("USP Lucca", "https://www.toscana.istruzione.it/category/usp-lucca/interpelli/feed/", 1),
-        ("USP Pisa", "https://www.toscana.istruzione.it/category/usp-pisa/interpelli/feed/", 1)
+        ("USP Firenze", "https://www.ust.fi.it/", 1),
+        ("USP Lucca", "https://www.ustlucca.it/feed/", 1),
+        ("USP Pisa", "https://www.toscana-istruzione.it/atpisa/category/news/", 1)
     ],
     "Trentino-Alto Adige": [
         ("USP Trento", "https://www.vivoscuola.it/feed/", 1)
     ],
     "Umbria": [
-        ("USP Perugia", "https://www.usp.perugia.it/category/interpelli/feed/", 1)
+        ("USP Perugia", "https://istruzione.umbria.it/interpelli/interpelli-aperti/", 1)
     ],
     "Valle d'Aosta": [
         ("USP Aosta", "https://www.scuole.vda.it/category/interpelli/feed/", 1)
@@ -139,7 +133,8 @@ SOURCES = {
         ("USP Padova", "https://padova.istruzioneveneto.gov.it/category/interpelli-personale-docente/", 1),
         ("USP Treviso", "https://treviso.istruzioneveneto.gov.it/tag/interpelli-istituti-scolastici/", 1),
         ("USP Venezia", "https://venezia.istruzioneveneto.gov.it/interpelli-supplenze/", 1),
-        ("USP Verona", "https://verona.istruzioneveneto.gov.it/index.php/interpelli-as-2025-2026/", 1)
+        ("USP Verona", "https://verona.istruzioneveneto.gov.it/index.php/interpelli-2026-2027/", 1),
+        ("USP Rovigo", "https://rovigo.istruzioneveneto.gov.it/category/5-interpelli/docenti-rovigo/", 1)
     ]
 }
 
@@ -257,6 +252,14 @@ def fetch_url(url):
         return _open(url, ssl.create_default_context())
     except Exception as ex:
         reason = getattr(ex, "reason", ex)
+        if isinstance(reason, socket.gaierror) or "name or service" in str(ex).lower():
+            # Nome non risolto: prova con/senza "www."
+            alt = re.sub(r"^(https?://)www\.", r"\1", url) if "://www." in url else re.sub(r"^(https?://)", r"\1www.", url)
+            if alt != url and not getattr(fetch_url, "_alt", False):
+                try:
+                    return _open(alt, ssl.create_default_context())
+                except Exception:
+                    pass
         if isinstance(reason, ssl.SSLError) or "CERTIFICATE" in str(ex).upper():
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
@@ -700,7 +703,7 @@ def get_page_url(base_url, page_num):
         return f"{base_url}?paged={page_num}"
 
 
-NOTICE_LINK_RE = re.compile(r"\b(?:interpell\w*|supplenz\w*|avvis\w*|graduatori\w*|docent\w*|ata|dsga|"
+NOTICE_LINK_RE = re.compile(r"\b(?:interpell\w*|interp\b\.?|supplenz\w*|avvis\w*|graduatori\w*|docent\w*|ata|dsga|"
                             r"collaborator\w*|assistent\w*|disponibilit\w*)\b", re.I)
 
 
@@ -761,6 +764,15 @@ def parse_source_page(region, source_name, url, known):
                     items.append((title, link, pub_date))
         except Exception:
             pass
+
+    # Portale USR Liguria: tabella con un link "interpello.php?id=N" per riga.
+    if not items and "interpello.php" in lower_content:
+        for row in re.findall(r'<tr\b.*?</tr>', html_content, re.I | re.S):
+            m = re.search(r'href=["\']([^"\']*interpello\.php[^"\']*)["\']', row, re.I)
+            if m:
+                txt = clean_text(row)
+                if len(txt) >= 10:
+                    items.append(("Interpello " + txt[:140], urljoin(url, m.group(1)), ""))
 
     # Pagine che non sono feed: cerca i link agli avvisi nel corpo della pagina (senza menu né piè di pagina).
     # Se il feed ha già fornito gli avvisi, i link dentro le descrizioni non si contano.
@@ -931,37 +943,63 @@ def fmt_score(value):
     return f"{value:g}".replace(".", ",")
 
 
+def gps_reserved_tail(ordered, quota):
+    """Riservisti riconoscibili da un salto di posizione: i chiamati si seguono in ordine di posizione, quindi uno che
+    arriva dopo un salto grande (es. dalla 20ª alla 80ª) è quasi certamente entrato dalla riserva.
+    Restituisce da quale indice (in ordine di posizione) i chiamati sono riservisti, o None se non c'è un salto
+    credibile. La coda tagliata non può superare la quota del 15%."""
+    by_pos = sorted(ordered, key=lambda x: x[1])
+    if quota < 1 or len(by_pos) < 3:
+        return None, by_pos
+    gaps = sorted(by_pos[i][1] - by_pos[i - 1][1] for i in range(1, len(by_pos)))
+    median = gaps[len(gaps) // 2]
+    jump = max(20, 5 * max(1, median))
+    for j in range(1, len(by_pos)):
+        if by_pos[j][1] - by_pos[j - 1][1] > jump and len(by_pos) - j <= quota:
+            return j, by_pos
+    return None, by_pos
+
+
 def gps_threshold(entry, riserva=0.0, totals=None):
-    """(soglia, posizione, nomine, escluse, minima).
+    """(soglia, posizione, nomine, escluse, minima, rilevata).
     La riserva del 15% si calcola sul totale dei chiamati della classe in quel bollettino (tutte le fasce insieme,
-    `totals` = {turno: chiamati}), arrotondato per difetto: 20 chiamati -> 3 posti riservati. Non si sa chi sono i
-    riservisti, quindi per prudenza si tolgono, in quel turno, i punteggi più bassi della fascia (mai tutti).
+    `totals` = {turno: chiamati}), arrotondato per difetto: 20 chiamati -> 3 posti riservati.
+    Se tra i chiamati c'è un salto di posizione (es. dalla 20ª alla 80ª) chi sta dopo il salto è un riservista
+    (`rilevata` = True) e si toglie quello; altrimenti non si sa chi sono e per prudenza si tolgono, in quel turno,
+    i punteggi più bassi della fascia (mai tutti).
     soglia = punteggio dell'ultimo nominato rimasto; con più turni vale il più basso raggiunto.
     minima = punteggio dell'ultimo nominato in assoluto. Senza elenco dei punteggi soglia = minima."""
     n = int(entry["n"])
     minima = float(entry["min"])
     turns = entry.get("t") or ([{"b": "1", "s": entry["s"]}] if entry.get("s") else [])
     if not turns or riserva <= 0:
-        return minima, int(entry.get("pos", 0)), n, 0, minima
+        return minima, int(entry.get("pos", 0)), n, 0, minima, False
     pct = int(round(riserva * 100))
-    best, escluse = None, 0
+    best, escluse, rilevata = None, 0, False
     for t in turns:
         ordered = sorted(t["s"], key=lambda x: (-x[0], x[1]))
         total = (totals or {}).get(t.get("b"), len(ordered))
-        skip = min(total * pct // 100, len(ordered) - 1)   # interi: nessun errore di arrotondamento
-        kept = ordered[:len(ordered) - skip]
+        quota = min(total * pct // 100, len(ordered) - 1)   # interi: nessun errore di arrotondamento
+        cut, by_pos = gps_reserved_tail(ordered, quota)
+        if cut is not None:
+            kept = sorted(by_pos[:cut], key=lambda x: (-x[0], x[1]))
+            rilevata = True
+        else:
+            kept = ordered[:len(ordered) - quota]
         escluse += len(ordered) - len(kept)
         last = kept[-1]
         if best is None or last[0] < best[0]:
             best = last
-    return float(best[0]), int(best[1]), n, escluse, minima
+    return float(best[0]), int(best[1]), n, escluse, minima, rilevata
 
 
-def gps_rank(data, cdc, fascia, score, region="", riserva=0.0):
+def gps_rank(data, cdc, fascia, score, region="", riserva=0.0, tipo="GPS"):
     """Confronta il punteggio con quello dell'ultimo nominato di ogni provincia.
     esito: "si" (ci saresti anche con la riserva piena), "forse" (dipende da quanti riservisti sono entrati),
     "no". Prima i "si" (margine maggiore per primi), poi i "forse", poi i "no" (i più vicini per primi)."""
     cdc = (cdc or "").strip().upper()
+    if tipo == "GUI" and cdc.startswith("AD"):
+        cdc += "#GUI"              # sostegno: la graduatoria GUI (incrocio) è separata dalla GPS
     key = f"{cdc}:{fascia}"
     rows = []
     for prov, info in data.get("province", {}).items():
@@ -977,13 +1015,13 @@ def gps_rank(data, cdc, fascia, score, region="", riserva=0.0):
         for f in GPS_FASCE:
             for t in (classi.get(f"{cdc}:{f}") or {}).get("t", []):
                 totals[t.get("b")] = totals.get(t.get("b"), 0) + len(t["s"])
-        soglia, ultima, n, escluse, minima = gps_threshold(entry, riserva, totals)
+        soglia, ultima, n, escluse, minima, rilevata = gps_threshold(entry, riserva, totals)
         chiamati = sum(totals.values())
         margin = round(score - soglia, 3)
         esito = "si" if margin >= 0 else ("forse" if score >= minima else "no")
         turni = [(t.get("b"), min(sc for sc, _ in t["s"])) for t in entry.get("t", []) if t.get("s")]
         rows.append({"provincia": prov, "regione": reg, "soglia": soglia, "minima": minima, "turni": turni, "chiamati": chiamati,
-                     "massimo": float(entry["max"]), "nomine": n, "escluse": escluse, "ultima": ultima,
+                     "massimo": float(entry["max"]), "nomine": n, "escluse": escluse, "ultima": ultima, "rilevata": rilevata,
                      "margine": margin, "mancano": round(max(0.0, minima - score), 3),
                      "esito": esito, "ok": esito == "si"})
     order = {"si": 0, "forse": 1, "no": 2}
@@ -1993,16 +2031,42 @@ def build(page: ft.Page, raw_prefs=None):
             options=[ft.DropdownOption(key="", text="Tutte le province")]
                     + [ft.DropdownOption(key=p, text=p) for p in sorted(gps_data.get("province", {}))])
         gps_riserva = ft.Switch(label="Considera la riserva del 15%", value=True)
+        gps_tipo = ft.Dropdown(
+            label="Graduatoria del sostegno", value="GPS", border_radius=14,
+            options=[ft.DropdownOption(key="GPS", text="GPS (con specializzazione sul sostegno)"),
+                     ft.DropdownOption(key="GUI", text="GUI (senza specializzazione: incrocio)")])
+        gps_tipo_box = ft.Column(visible=False, spacing=6, controls=[
+            gps_tipo,
+            ft.Text("Per il sostegno i bollettini hanno due graduatorie: la GPS, di chi ha la specializzazione, e la "
+                    "GUI (incrocio), dove entra chi non ce l'ha usando il punteggio della graduatoria di origine. "
+                    "Hanno soglie diverse, quindi scegli quella in cui sei.", size=11.5,
+                    color=ft.Colors.ON_SURFACE_VARIANT)])
+
+        def sync_tipo(e=None):
+            is_ad = (gps_class_field.value or "").strip().upper().startswith("AD")
+            gps_tipo_box.visible = is_ad
+            if not is_ad:
+                gps_tipo.value = "GPS"
+            try:
+                page.update()
+            except Exception:
+                pass
+
+        gps_class_field.on_change = sync_tipo
         gps_profiles_row = ft.Row(wrap=True, spacing=6, run_spacing=6)
         gps_state = {"rows": {}}
 
         def profile_label(p):
-            return f"{p['c']} · {GPS_FASCE.get(p['f'], p['f'])} · {p['s'].replace('.', ',')}"
+            return (f"{p['c']}{' ' + p['t'] if p.get('t') else ''} · {GPS_FASCE.get(p['f'], p['f'])} · "
+                    f"{p['s'].replace('.', ',')}")
 
         def use_profile(p):
             gps_class_field.value = p["c"]
             gps_fascia.value = p["f"]
             gps_score_field.value = p["s"]
+            sync_tipo()
+            if p["c"].startswith("AD"):
+                gps_tipo.value = p.get("t", "GPS")
             run_gps()
 
         def drop_profile(p):
@@ -2034,6 +2098,8 @@ def build(page: ft.Page, raw_prefs=None):
                 page.update()
                 return
             p = {"c": cls, "f": gps_fascia.value or "II", "s": score}
+            if cls.startswith("AD"):
+                p["t"] = gps_tipo.value or "GPS"
             if p not in prefs["profiles"]:
                 prefs["profiles"] = (prefs["profiles"] + [p])[-8:]
             gps_hint.value = ""
@@ -2122,7 +2188,8 @@ def build(page: ft.Page, raw_prefs=None):
                                        bar_height=6, border_radius=3),
                         ft.Text(last, size=11.5, color=ft.Colors.ON_SURFACE_VARIANT),
                         *([ft.Text(f"Riserva 15%: tolti {r['escluse']} posti su {r['chiamati']} chiamati della classe "
-                                   "(dai punteggi più bassi)", size=11.5,
+                                   + ("(riservisti riconosciuti dal salto di posizione)" if r.get("rilevata")
+                                      else "(dai punteggi più bassi)"), size=11.5,
                                    color=ft.Colors.ON_SURFACE_VARIANT)] if r.get("escluse") else []),
                         *([ft.Text("Per turno, ultimo nominato: " + " → ".join(
                             f"{b}° {fmt_score(v)}" for b, v in r["turni"]), size=11.5,
@@ -2147,8 +2214,9 @@ def build(page: ft.Page, raw_prefs=None):
                 prefs["gps_class"], prefs["gps_score"] = cls, score
                 save_prefs()
                 fascia = gps_fascia.value or "II"
+                tipo = gps_tipo.value if cls.startswith("AD") else "GPS"
                 rows = gps_rank(gps_data, cls, fascia, num, gps_region.value or "",
-                                riserva=GPS_RISERVA if gps_riserva.value else 0.0)
+                                riserva=GPS_RISERVA if gps_riserva.value else 0.0, tipo=tipo)
                 if gps_province.value:
                     rows = [r for r in rows if r["provincia"] == gps_province.value]
                 gps_info.visible = True
@@ -2160,7 +2228,7 @@ def build(page: ft.Page, raw_prefs=None):
                     maybe = sum(1 for r in rows if r["esito"] == "forse")
                     no = len(rows) - yes - maybe
                     gps_summary.content = ft.Column(spacing=8, controls=[
-                        ft.Text(f"{cls} · {GPS_FASCE.get(fascia, '')} · {fmt_score(num)} punti",
+                        ft.Text(f"{cls}{' · ' + tipo if cls.startswith('AD') else ''} · {GPS_FASCE.get(fascia, '')} · {fmt_score(num)} punti",
                                 size=13, weight=ft.FontWeight.W_700),
                         ft.Row(spacing=8, controls=[stat_tile(yes, "Ci saresti", GREEN),
                                                     stat_tile(maybe, "Forse", "#E08A00"),
@@ -2295,6 +2363,7 @@ def build(page: ft.Page, raw_prefs=None):
                                     "dei bollettini di nomina di ogni provincia.", size=12.5,
                                     color=ft.Colors.ON_SURFACE_VARIANT),
                             ft.Row(spacing=10, controls=[gps_class_field, gps_fascia]),
+                            gps_tipo_box,
                             gps_score_field,
                             ft.TextButton(content="Non so il mio punteggio: calcolalo", icon=ft.Icons.CALCULATE_ROUNDED,
                                           on_click=lambda e: open_calc(e)),
@@ -2346,6 +2415,7 @@ def build(page: ft.Page, raw_prefs=None):
             gps_class_field.value = prefs["gps_class"] or first_class
             gps_score_field.value = prefs["gps_score"]
             gps_hint.value = ""
+            sync_tipo()
             gps_info.visible = False
             gps_summary.visible = False
             gps_compare_card.visible = False
