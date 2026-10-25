@@ -1218,6 +1218,12 @@ def build(page: ft.Page, raw_prefs=None):
             cursor_color=BRAND_LIGHT,
         )
 
+        menu_button = ft.IconButton(icon=ft.Icons.MENU_ROUNDED, icon_color=ft.Colors.WHITE, icon_size=26,
+                                    tooltip="Menù", on_click=lambda e: open_menu(e),
+                                    style=ft.ButtonStyle(bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.WHITE)))
+        refresh_button.icon_color = ft.Colors.WHITE
+        refresh_button.style = ft.ButtonStyle(bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.WHITE))
+
         header = ft.Container(
             gradient=ft.LinearGradient(
                 begin=ft.Alignment.TOP_LEFT,
@@ -1232,7 +1238,8 @@ def build(page: ft.Page, raw_prefs=None):
                     ft.Row(
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         controls=[
-                            ft.Image(src="logo.png", width=46, height=46, border_radius=12),
+                            menu_button,
+                            ft.Image(src="logo.png", width=42, height=42, border_radius=12),
                             ft.Column(
                                 expand=True, spacing=0,
                                 controls=[
@@ -1242,6 +1249,7 @@ def build(page: ft.Page, raw_prefs=None):
                                             size=12, color=ft.Colors.with_opacity(0.85, ft.Colors.WHITE)),
                                 ],
                             ),
+                            refresh_button,
                         ],
                     ),
                     search_input,
@@ -1285,9 +1293,6 @@ def build(page: ft.Page, raw_prefs=None):
                 make_pill("ATA", "ATA", None),
                 make_pill("ME", "Per me", ft.Icons.STAR_ROUNDED),
                 make_pill("SAVED", "Salvati", ft.Icons.BOOKMARK_ROUNDED),
-                settings_button,
-                refresh_button,
-                sources_button,
                 reset_button,
             ],
         )
@@ -1413,18 +1418,85 @@ def build(page: ft.Page, raw_prefs=None):
             ft.TextButton(content="Copia elenco", icon=ft.Icons.CONTENT_COPY_ROUNDED, on_click=saved_copy),
             ft.TextButton(content="Invia su WhatsApp", icon=ft.Icons.SHARE_ROUNDED, on_click=saved_whatsapp)]
 
+        def shortcut(icon, label, handler):
+            return ft.Container(
+                expand=True, ink=True, border_radius=18, height=78, on_click=handler,
+                bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
+                content=ft.Column(spacing=4, alignment=ft.MainAxisAlignment.CENTER,
+                                  horizontal_alignment=ft.CrossAxisAlignment.CENTER, controls=[
+                    ft.Icon(icon, size=26, color=BRAND_LIGHT),
+                    ft.Text(label, size=11.5, weight=ft.FontWeight.W_700, text_align=ft.TextAlign.CENTER)]))
+
+        shortcuts_row = ft.Row(spacing=10, controls=[
+            shortcut(ft.Icons.TRAVEL_EXPLORE_ROUNDED, "Dove fare\nle GPS", lambda e: open_menu_item(open_gps)),
+            shortcut(ft.Icons.RADAR_ROUNDED, "Radar\nopportunità", lambda e: open_menu_item(open_radar)),
+            shortcut(ft.Icons.CALCULATE_ROUNDED, "Calcola\npunteggio", lambda e: open_menu_item(open_calc)),
+            shortcut(ft.Icons.GRID_VIEW_ROUNDED, "Tutte le\nfunzioni", lambda e: open_menu(e)),
+        ])
+
+        stat_texts = {k: ft.Text("–", size=24, weight=ft.FontWeight.W_800, color=c)
+                      for k, c in (("open", BRAND_LIGHT), ("soon", "#E8590C"), ("mine", GREEN))}
+
+        def stat_tile(key, label, handler):
+            return ft.Container(
+                expand=True, ink=True, border_radius=18, padding=ft.Padding.symmetric(horizontal=12, vertical=10),
+                on_click=handler, bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
+                border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
+                content=ft.Column(spacing=0, controls=[
+                    stat_texts[key], ft.Text(label, size=11.5, color=ft.Colors.ON_SURFACE_VARIANT)]))
+
+        def stat_filter(status):
+            state["profile"] = ""
+            state["status"] = status
+            status_dropdown.value = status
+            paint_pills()
+            load_results(reset=True)
+
+        stats_row = ft.Row(spacing=10, controls=[
+            stat_tile("open", "Aperti ora", lambda e: stat_filter("active")),
+            stat_tile("soon", "In scadenza", lambda e: stat_filter("soon")),
+            stat_tile("mine", "Per te", lambda e: set_profile("ME")),
+        ])
+
+        def paint_stats():
+            try:
+                today_s = date.today().strftime("%Y-%m-%d")
+                soon_s = (date.today() + timedelta(days=SOON_DAYS)).strftime("%Y-%m-%d")
+                conn = db_connect()
+                rows = conn.execute("SELECT title, cdc, deadline FROM interpelli "
+                                    "WHERE deadline IS NOT NULL AND deadline >= ?", (today_s,)).fetchall()
+                conn.close()
+                stat_texts["open"].value = str(len(rows))
+                stat_texts["soon"].value = str(sum(1 for r in rows if r[2] <= soon_s))
+                stat_texts["mine"].value = (str(sum(1 for r in rows if matches_classes(r[0], r[1], prefs["classes"])))
+                                            if prefs["classes"] else "–")
+            except Exception:
+                pass
+
+        filters_panel = ft.Column(spacing=10, visible=False, controls=[
+            ft.Row(spacing=10, controls=[region_dropdown, status_dropdown]), sort_dropdown])
+        filters_toggle = ft.TextButton(content="Filtri", icon=ft.Icons.TUNE_ROUNDED)
+
+        def toggle_filters(e=None):
+            filters_panel.visible = not filters_panel.visible
+            filters_toggle.icon = (ft.Icons.KEYBOARD_ARROW_UP_ROUNDED if filters_panel.visible
+                                   else ft.Icons.TUNE_ROUNDED)
+            page.update()
+
+        filters_toggle.on_click = toggle_filters
+
         filters = ft.Container(
             padding=ft.Padding.only(left=16, right=16, top=14, bottom=4),
             content=ft.Column(
                 spacing=10,
                 controls=[
-                    gps_button,
-                    ft.Row(controls=[radar_button]),
-                    pills_row,
+                    shortcuts_row,
+                    stats_row,
+                    ft.Row(spacing=4, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                           controls=[ft.Container(expand=True, content=pills_row), filters_toggle]),
                     classes_text,
                     saved_tools,
-                    ft.Row(spacing=10, controls=[region_dropdown, status_dropdown]),
-                    sort_dropdown,
+                    filters_panel,
                 ],
             ),
         )
@@ -1885,6 +1957,7 @@ def build(page: ft.Page, raw_prefs=None):
                         except Exception:
                             pass
                     update_reset_visibility()
+                    paint_stats()
                     page.update()
                 except Exception as ex:
                     status_text.value = f"Errore nel caricamento: {ex}"
@@ -1901,7 +1974,7 @@ def build(page: ft.Page, raw_prefs=None):
             if prefs["classes"]:
                 classes_text.value = "Le mie classi: " + ", ".join(prefs["classes"])
             else:
-                classes_text.value = "Tocca ⚙ in alto per scegliere le tue classi di concorso"
+                classes_text.value = "Apri il menù ☰ → «Le mie classi» per scegliere le tue classi"
 
         def set_profile(key):
             if key == "ME" and not prefs["classes"]:
@@ -3060,7 +3133,147 @@ def build(page: ft.Page, raw_prefs=None):
             except Exception:
                 pass
 
-        page.add(home_view, gps_view, calc_view, radar_view, sources_view)
+        # ---- Menù: tutte le funzioni in una pagina ---------------------------------------
+        info_dlg = ft.AlertDialog(
+            title=ft.Text("Informazioni"),
+            content=ft.Column(tight=True, spacing=10, controls=[
+                ft.Text("Interpelli Scuola raccoglie gli avvisi pubblicati dagli Uffici Scolastici e dalle scuole, "
+                        "e li mostra in un posto solo.", size=13),
+                ft.Text("Le stime GPS (province, riserva del 15%, punteggio) sono indicative: fanno fede gli "
+                        "Uffici Scolastici e i bollettini ufficiali.", size=13),
+                ft.Text("L'app non è collegata né affiliata al Ministero dell'Istruzione e del Merito. "
+                        "Non raccoglie dati personali: classi e preferenze restano sul tuo telefono.",
+                        size=13)]),
+            actions=[ft.TextButton("Chiudi", on_click=lambda e: close_dialog(info_dlg))])
+
+        theme_label = {"": "Come il telefono", "light": "Chiaro", "dark": "Scuro"}
+        theme_sub = ft.Text(theme_label[prefs["theme"]], size=11.5, color=ft.Colors.ON_SURFACE_VARIANT)
+
+        def cycle_theme(e=None):
+            nxt = {"": "light", "light": "dark", "dark": ""}[prefs["theme"]]
+            prefs["theme"] = nxt
+            theme_sub.value = theme_label[nxt]
+            apply_theme()
+            save_prefs()
+            page.update()
+
+        def hide_all_pages():
+            for v in (gps_view, calc_view, radar_view, sources_view, menu_view):
+                v.visible = False
+
+        def open_menu(e=None):
+            hide_all_pages()
+            home_view.visible = False
+            menu_greeting.value = (f"Ciao {prefs['name'].split()[0]}!" if prefs["name"].strip() else "Cosa vuoi fare?")
+            menu_view.visible = True
+            page.update()
+
+        def close_menu(e=None):
+            menu_view.visible = False
+            home_view.visible = True
+            page.update()
+
+        def open_menu_item(fn):
+            """Apre una pagina partendo dalla home o dal menù."""
+            menu_view.visible = False
+            fn()
+
+        def menu_goto_home(profile=""):
+            menu_view.visible = False
+            home_view.visible = True
+            state["profile"] = profile
+            paint_pills()
+            page.update()
+            load_results(reset=True)
+
+        def menu_tile(icon, title, sub, handler, color=BRAND_LIGHT):
+            return ft.Container(
+                expand=True, ink=True, border_radius=22, height=122, on_click=handler,
+                padding=14, bgcolor=ft.Colors.SURFACE_CONTAINER_LOW, border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
+                content=ft.Column(spacing=2, alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[
+                    ft.Container(width=40, height=40, border_radius=13, alignment=ft.Alignment.CENTER,
+                                 bgcolor=ft.Colors.with_opacity(0.14, color), content=ft.Icon(icon, size=24, color=color)),
+                    ft.Column(spacing=0, controls=[
+                        ft.Text(title, size=14.5, weight=ft.FontWeight.W_800),
+                        sub if isinstance(sub, ft.Control) else
+                        ft.Text(sub, size=11.5, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=2)])]))
+
+        menu_greeting = ft.Text("Cosa vuoi fare?", size=20, weight=ft.FontWeight.W_800, color=ft.Colors.WHITE)
+        menu_header = ft.Container(
+            gradient=ft.LinearGradient(begin=ft.Alignment.TOP_LEFT, end=ft.Alignment.BOTTOM_RIGHT,
+                                       colors=[BRAND_DARK, BRAND_LIGHT]),
+            padding=ft.Padding.only(left=6, right=18, top=18, bottom=18),
+            border_radius=ft.BorderRadius.only(bottom_left=28, bottom_right=28),
+            content=ft.Row(vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=4, controls=[
+                ft.IconButton(icon=ft.Icons.ARROW_BACK_ROUNDED, icon_color=ft.Colors.WHITE, icon_size=26,
+                              tooltip="Indietro", on_click=close_menu),
+                ft.Column(expand=True, spacing=0, controls=[
+                    menu_greeting,
+                    ft.Text("Tutte le funzioni dell'app", size=12,
+                            color=ft.Colors.with_opacity(0.88, ft.Colors.WHITE))])]))
+
+        def menu_label(text):
+            return ft.Text(text, size=12, weight=ft.FontWeight.W_700, color=ft.Colors.ON_SURFACE_VARIANT)
+
+        menu_body = ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, controls=[
+            ft.Container(padding=ft.Padding.only(left=16, right=16, top=16, bottom=28), content=ft.Column(
+                spacing=12, controls=[
+                    menu_label("INTERPELLI"),
+                    ft.Row(spacing=12, controls=[
+                        menu_tile(ft.Icons.HOME_ROUNDED, "Interpelli", "Tutti gli avvisi, con ricerca e filtri",
+                                  lambda e: menu_goto_home("")),
+                        menu_tile(ft.Icons.STAR_ROUNDED, "Per me", "Solo le tue classi di concorso",
+                                  lambda e: menu_goto_home("ME") if prefs["classes"] else (close_menu(), open_settings()),
+                                  GOLD)]),
+                    ft.Row(spacing=12, controls=[
+                        menu_tile(ft.Icons.BOOKMARK_ROUNDED, "Salvati", "Preferiti e candidature inviate",
+                                  lambda e: menu_goto_home("SAVED"), GREEN),
+                        menu_tile(ft.Icons.RADAR_ROUNDED, "Radar opportunità", "Province con interpelli per te",
+                                  lambda e: open_menu_item(open_radar), "#E8590C")]),
+                    menu_label("GPS"),
+                    ft.Row(spacing=12, controls=[
+                        menu_tile(ft.Icons.TRAVEL_EXPLORE_ROUNDED, "Dove fare le GPS", "Province e riserva del 15%",
+                                  lambda e: open_menu_item(open_gps)),
+                        menu_tile(ft.Icons.CALCULATE_ROUNDED, "Calcola punteggio", "Titoli, servizio, certificazioni",
+                                  lambda e: open_menu_item(open_calc))]),
+                    menu_label("APP"),
+                    ft.Row(spacing=12, controls=[
+                        menu_tile(ft.Icons.TUNE_ROUNDED, "Le mie classi", "Classi, nome per le candidature",
+                                  lambda e: open_settings(), BRAND_DARK),
+                        menu_tile(ft.Icons.RSS_FEED_ROUNDED, "Fonti", "Quali siti rispondono",
+                                  lambda e: open_menu_item(open_sources), "#6B7280")]),
+                    ft.Row(spacing=12, controls=[
+                        menu_tile(ft.Icons.DARK_MODE_ROUNDED, "Aspetto", theme_sub, cycle_theme, "#7048E8"),
+                        menu_tile(ft.Icons.INFO_OUTLINE_ROUNDED, "Informazioni", "Avvertenze e privacy",
+                                  lambda e: show_dialog(info_dlg), "#6B7280")]),
+                ]))])
+        menu_view = ft.Column(expand=True, spacing=0, visible=False, controls=[menu_header, menu_body])
+
+        _go_back_sources = go_back
+
+        def go_back(e=None):
+            if menu_view.visible:
+                close_menu()
+                return True
+            return _go_back_sources(e)
+
+        for _name in ("on_back_button", "on_view_pop"):
+            try:
+                setattr(page, _name, go_back)
+            except Exception:
+                pass
+
+        disclaimer = ft.Container(
+            padding=ft.Padding.symmetric(horizontal=12, vertical=6),
+            bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
+            content=ft.Row(spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER, controls=[
+                ft.Icon(ft.Icons.INFO_OUTLINE_ROUNDED, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                ft.Text("Le stime GPS sono indicative: fanno fede gli Uffici Scolastici. "
+                        "L'app non è collegata al Ministero dell'Istruzione e del Merito.",
+                        size=10.5, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+            ]),
+        )
+        page.add(home_view, gps_view, calc_view, radar_view, sources_view, menu_view, disclaimer)
         load_results(reset=True)
 
         # Primo avvio: se non c'è ancora nulla, scarica subito.
