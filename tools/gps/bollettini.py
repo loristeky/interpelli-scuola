@@ -57,7 +57,7 @@ ROW_LAYOUT = re.compile(
 POS_SCORE = re.compile(r"\s(?P<pos>\d{1,5})\s+(?P<score>\d{1,3}(?:[.,]\d{1,3})?)\s+[NSR]\s?-")
 # formato con riga della classe e riga dei dati separate (pdftotext -raw)
 CLASS_LINE = re.compile(r"^(?P<cdc>" + CLASS_RE + r")\s+-\s+\S")
-ROW_RAW = re.compile(r"^(?P<tipo>GPS|GAE)\s+F(?P<fascia>\d)\s+(?P<pos>\d{1,5})\s+(?P<score>\d{1,3}(?:[.,]\d{1,3})?)(?:\s|$)")
+ROW_RAW = re.compile(r"^(?P<tipo>GPS|GAE|GUI)\s+F(?P<fascia>\d)\s+(?P<pos>\d{1,5})\s+(?P<score>\d{1,3}(?:[.,]\d{1,3})?)(?:\s|$)")
 # formato CSV stampato nel PDF: classe;GPS;F1;;;;;posizione;punteggio;...
 ROW_CSV = re.compile(r"^(?P<cdc>" + CLASS_RE + r") - [^;]*;(?P<tipo>GPS|GAE|GUI);F(?P<fascia>\d);(?:[^;]*;){4}"
                      r"(?P<pos>\d{1,5});(?P<score>\d{1,3}(?:[.,]\d{1,3})?);")
@@ -73,6 +73,15 @@ def _school_siglas(text):
     return [m.group(1) for m in SCHOOL_RE.finditer(text) if m.group(1) in SIGLE]
 
 
+def tipo_code(cdc, tipo):
+    """Codice con cui si salva una riga: GPS = «ADMM»; GUI (solo sostegno, classi AD**) = «ADMM#GUI»; altro = None."""
+    if tipo == "GPS":
+        return cdc
+    if tipo == "GUI" and cdc.startswith("AD"):
+        return cdc + "#GUI"
+    return None
+
+
 def parse_rows(text):
     """Restituisce [(classe, fascia, posizione, punteggio)] per le righe GPS."""
     rows = []
@@ -81,18 +90,20 @@ def parse_rows(text):
         line = line.rstrip()
         m = ROW_CSV.match(line)
         if m:
-            if m["tipo"] == "GPS":
-                rows.append((m["cdc"], "I" if m["fascia"] == "1" else "II",
+            code = tipo_code(m["cdc"], m["tipo"])
+            if code:
+                rows.append((code, "I" if m["fascia"] == "1" else "II",
                              int(m["pos"]), float(m["score"].replace(",", "."))))
             continue
         m = ROW_LAYOUT.match(line) if line[:1].strip() else None
         if m:
             cur = None
-            if m["tipo"] != "GPS":
+            code = tipo_code(m["cdc"], m["tipo"])
+            if not code:
                 continue
             ps = POS_SCORE.search(m["rest"])
             if ps:
-                rows.append((m["cdc"], "I" if m["fascia"] == "1" else "II",
+                rows.append((code, "I" if m["fascia"] == "1" else "II",
                              int(ps["pos"]), float(ps["score"].replace(",", "."))))
             continue
         m = CLASS_LINE.match(line)
@@ -100,8 +111,8 @@ def parse_rows(text):
             cur = m["cdc"]
             continue
         m = ROW_RAW.match(line)
-        if m and cur and m["tipo"] == "GPS":
-            rows.append((cur, "I" if m["fascia"] == "1" else "II",
+        if m and cur and tipo_code(cur, m["tipo"]):
+            rows.append((tipo_code(cur, m["tipo"]), "I" if m["fascia"] == "1" else "II",
                          int(m["pos"]), float(m["score"].replace(",", "."))))
     return rows
 
@@ -150,11 +161,12 @@ def parse_tables(path):
                     cell = {k: (r[i] or "").replace("\n", " ").strip() for k, i in cm.items()}
                     mc = re.match(r"^(" + CLASS_RE + r")\b", cell["cdc"])
                     mf = re.match(r"^F?(\d)$", cell["fascia"])
-                    if not (mc and mf and cell["tipo"] == "GPS"
+                    code = tipo_code(mc.group(1), cell["tipo"]) if mc else None
+                    if not (mc and mf and code
                             and re.fullmatch(r"\d{1,5}", cell["pos"])
                             and re.fullmatch(r"\d{1,3}(?:[.,]\d{1,3})?", cell["score"])):
                         continue
-                    rows.append((mc.group(1), "I" if mf.group(1) == "1" else "II",
+                    rows.append((code, "I" if mf.group(1) == "1" else "II",
                                  int(cell["pos"]), float(cell["score"].replace(",", "."))))
                     if cell.get("school"):
                         schools.append(cell["school"])
@@ -197,10 +209,11 @@ def read_xlsx(path):
             mf = re.match(r"^F?(\d)$", r[cm["fascia"]])
             pos = re.sub(r"\.0$", "", r[cm["pos"]])
             score = r[cm["score"]]
-            if not (mc and mf and r[cm["tipo"]] == "GPS" and re.fullmatch(r"\d{1,5}", pos)
+            code = tipo_code(mc.group(1), r[cm["tipo"]]) if mc else None
+            if not (mc and mf and code and re.fullmatch(r"\d{1,5}", pos)
                     and re.fullmatch(r"\d{1,3}(?:[.,]\d{1,3})?", score)):
                 continue
-            rows.append((mc.group(1), "I" if mf.group(1) == "1" else "II", int(pos), float(score.replace(",", "."))))
+            rows.append((code, "I" if mf.group(1) == "1" else "II", int(pos), float(score.replace(",", "."))))
             if cm.get("school"):
                 schools.append(r[cm["school"]])
     wb.close()
