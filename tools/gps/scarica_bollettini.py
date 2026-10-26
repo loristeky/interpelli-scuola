@@ -60,6 +60,45 @@ def news_pages(sources):
     return out
 
 
+# Pagine che raccolgono i link diretti ai bollettini di tutte le province (le rettifiche si saltano).
+ELENCHI = ["https://www.orizzontescuola.it/supplenze-docenti-ecco-i-bollettini-nomine-al-31-agosto-o-30-giugno-2027-in-aggiornamento/"]
+RETTIFICA_RE = re.compile(r"rettific\w*|\berrata\b|\bavviso\b.*\bmodific", re.I)
+ESTERNI_NO = ("facebook.", "twitter.", "x.com", "whatsapp.", "t.me", "telegram.", "google.", "linkedin.", "instagram.",
+              "youtube.", "orizzontescuola.", "mailto:", "tecnicadellascuola.", "wa.me")
+
+
+def province_in(text):
+    """Nome della provincia citato nel testo di un collegamento (la più lunga trovata), o None."""
+    sys.path.insert(0, str(Path(__file__).parent))
+    import bollettini
+    t = bollettini._slug(text)
+    best = None
+    for prov, _reg in bollettini.SIGLE.values():
+        sl = bollettini._slug(prov)
+        if len(sl) >= 4 and sl in t and (best is None or len(sl) > len(bollettini._slug(best))):
+            best = prov
+    return best
+
+
+def elenco_links(page_html, base):
+    """Collegamenti ai bollettini in una pagina-elenco: [(testo, url)], senza rettifiche."""
+    m = re.search(r"<article\b.*</article>", page_html, re.S | re.I)
+    body = m.group(0) if m else page_html
+    out = []
+    for href, txt in re.findall(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', body, re.I | re.S):
+        url = urljoin(base, unescape(href))
+        text = clean(txt)
+        low = url.lower()
+        if not low.startswith(("http://", "https://")) or any(x in low for x in ESTERNI_NO):
+            continue
+        label = text + " " + unquote(url.rsplit("/", 1)[-1])
+        if RETTIFICA_RE.search(label):
+            continue
+        if DOC_RE.search(url) or TITLE_RE.search(label) or province_in(text):
+            out.append((text or unquote(url.rsplit("/", 1)[-1]), url))
+    return list(dict.fromkeys(out))
+
+
 def load_app():
     os.environ.setdefault("FLET_APP_STORAGE_DATA", tempfile.mkdtemp())
     sys.modules.setdefault("flet", MagicMock())
@@ -156,7 +195,8 @@ def main(argv=None):
     seen = set(visti.get("urls", []))
     counters = dict(visti.get("turni", {}))
     sources = [(name, url) for srcs in app.SOURCES.values() for name, url, *_ in srcs]
-    sources += [(x["nome"], x["url"]) for x in read_json(EXTRA, []) if isinstance(x, dict) and x.get("url")]
+    sources += [(x["nome"], x["url"]) for x in read_json(EXTRA, []) if isinstance(x, dict) and x.get("url")
+                and x.get("tipo") != "elenco"]
     news = news_pages(sources)
     print(f"Pagine da guardare: {len(sources)} fonti degli interpelli + {len(news)} pagine di notizie/comunicazioni")
     sources = [(n, u, False) for n, u in sources] + [(n, u, True) for n, u in news]
@@ -184,6 +224,13 @@ def main(argv=None):
             for title, link in cands:
                 if link not in seen:
                     todo.append((name, url, title, link))
+    for url in ELENCHI + [x["url"] for x in read_json(EXTRA, []) if isinstance(x, dict) and x.get("tipo") == "elenco"]:
+        try:
+            for title, link in elenco_links(app.fetch_url(url), url):
+                if link not in seen:
+                    todo.append((province_in(title) or "Bollettino", url, title, link))
+        except Exception as ex:
+            print(f"[!] elenco {url[:70]}: non raggiungibile ({str(ex)[:60]})")
     print(f"Candidati nuovi: {len(todo)}")
 
     out = Path(args.cartella)
