@@ -1048,6 +1048,22 @@ def gps_points_access(voto, lode=False):
     return pts
 
 
+# Abilitazione dei percorsi da 30/60 CFU (DPCM 4 agosto 2023), prima fascia: 24 punti di base (non per gli ITP della
+# tabella B) più i punti del voto della prova finale (in decimi).
+GPS_ABIL_VOTI = [(10.0, 12), (9.5, 11), (9.0, 9), (8.5, 8), (8.0, 7), (7.5, 6), (7.0, 5)]
+GPS_ABIL_BASE = 24
+
+
+def gps_points_abil(voto, itp=False):
+    """Punti dell'abilitazione 60 CFU: voto in decimi (7-10, a mezzi punti) -> base 24 + punti del voto."""
+    if voto is None:
+        return 0.0
+    pts = dict(GPS_ABIL_VOTI).get(round(float(voto) * 2) / 2)
+    if pts is None:
+        return 0.0
+    return float(pts + (0 if itp else GPS_ABIL_BASE))
+
+
 def gps_points_service(days, specific=True):
     """Un anno scolastico: servizio specifico 2-12 punti in base ai giorni, aspecifico la metà (massimo 6)."""
     for lo, hi, pts in GPS_SERVIZIO:
@@ -1430,7 +1446,7 @@ def build(page: ft.Page, raw_prefs=None):
         shortcuts_row = ft.Row(spacing=10, controls=[
             shortcut(ft.Icons.TRAVEL_EXPLORE_ROUNDED, "Dove fare\nle GPS", lambda e: open_menu_item(open_gps)),
             shortcut(ft.Icons.RADAR_ROUNDED, "Radar\nopportunità", lambda e: open_menu_item(open_radar)),
-            shortcut(ft.Icons.CALCULATE_ROUNDED, "Calcola\npunteggio", lambda e: open_menu_item(open_calc)),
+            shortcut(ft.Icons.CALCULATE_ROUNDED, "Calcola\npunteggio", lambda e: open_menu_item(lambda: open_calc(from_home=True))),
             shortcut(ft.Icons.GRID_VIEW_ROUNDED, "Tutte le\nfunzioni", lambda e: open_menu(e)),
         ])
 
@@ -2547,6 +2563,17 @@ def build(page: ft.Page, raw_prefs=None):
         c_voto = ft.TextField(label="Voto di laurea / diploma (es. 98)", keyboard_type=ft.KeyboardType.NUMBER,
                               border_radius=14, prefix_icon=ft.Icons.SCHOOL_ROUNDED)
         c_lode = ft.Switch(label="110 e lode (+4)", value=False)
+        c_tipo = ft.Dropdown(label="Con quale titolo sei in prima fascia?", value="lau", border_radius=14,
+                             options=[ft.DropdownOption(key="lau", text="Laurea / diploma (vecchi percorsi)"),
+                                      ft.DropdownOption(key="abil", text="Abilitazione 60 CFU (DPCM 4/8/2023)")])
+        c_vabil = ft.Dropdown(label="Voto dell'abilitazione (in decimi)", value="", border_radius=14,
+                              options=[ft.DropdownOption(key="", text="Scegli il voto")] + [
+                                  ft.DropdownOption(key=f"{v:g}", text=f"{v:g}/10 → {GPS_ABIL_BASE + p} punti")
+                                  for v, p in GPS_ABIL_VOTI])
+        c_itp = ft.Switch(label="Classe ITP della tabella B (senza i 24 punti di base)", value=False)
+        c_abil_note = ft.Text("L'abilitazione è titolo di accesso: vale 24 punti di base più fino a 12 in base al voto "
+                              "(10/10 = 36, 9/10 = 33, 8/10 = 31, 7/10 = 29). Il voto di laurea qui non conta.",
+                              size=12, color=ft.Colors.ON_SURFACE_VARIANT)
         c_extra = {k: ft.Switch(label=f"{label} ({pts} punti)", value=False) for k, label, pts in GPS_TITOLI_EXTRA}
         c_master = ft.Dropdown(label="Master (1 punto ciascuno, max 3)", value="0", border_radius=14,
                                options=[ft.DropdownOption(key=str(i), text=str(i)) for i in range(0, 4)])
@@ -2573,7 +2600,13 @@ def build(page: ft.Page, raw_prefs=None):
                 voto = None
             if voto is not None and not 1 <= voto <= 110:
                 voto = None
-            acc = gps_points_access(voto, c_lode.value)
+            if c_tipo.value == "abil":
+                try:
+                    acc = gps_points_abil(float((c_vabil.value or "").replace(",", ".")), c_itp.value)
+                except ValueError:
+                    acc = 0.0
+            else:
+                acc = gps_points_access(voto, c_lode.value)
             extra = sum(pts for k, _l, pts in GPS_TITOLI_EXTRA if c_extra[k].value)
             master = min(int(c_master.value or 0), GPS_MASTER_MAX)
             lingua = GPS_LINGUE.get(c_lingua.value or "", 0)
@@ -2586,6 +2619,7 @@ def build(page: ft.Page, raw_prefs=None):
         def save_calc():
             prefs["calc"] = {
                 "voto": c_voto.value or "", "lode": bool(c_lode.value),
+                "tipo": c_tipo.value or "lau", "vabil": c_vabil.value or "", "itp": bool(c_itp.value),
                 "extra": [k for k, sw in c_extra.items() if sw.value],
                 "master": c_master.value or "0", "lingua": c_lingua.value or "",
                 "dig": bool(c_dig.value), "digedu": bool(c_digedu.value),
@@ -2597,6 +2631,11 @@ def build(page: ft.Page, raw_prefs=None):
             try:
                 c_voto.value = str(c.get("voto", ""))
                 c_lode.value = bool(c.get("lode"))
+                if c.get("tipo") in ("lau", "abil"):
+                    c_tipo.value = c["tipo"]
+                if c.get("vabil", "") in [""] + [f"{v:g}" for v, _p in GPS_ABIL_VOTI]:
+                    c_vabil.value = c.get("vabil", "")
+                c_itp.value = bool(c.get("itp"))
                 for k, sw in c_extra.items():
                     sw.value = k in (c.get("extra") or [])
                 if str(c.get("master", "0")) in ("0", "1", "2", "3"):
@@ -2610,6 +2649,9 @@ def build(page: ft.Page, raw_prefs=None):
                 calc["serv"] = []
 
         def paint_calc(e=None):
+            ab = c_tipo.value == "abil"
+            c_voto.visible = c_lode.visible = not ab
+            c_vabil.visible = c_itp.visible = c_abil_note.visible = ab
             total, parts = calc_total()
             c_total.value = fmt_score(total)
             c_detail.value = "  ·  ".join(f"{n}: {fmt_score(v)}" for n, v in parts)
@@ -2642,26 +2684,31 @@ def build(page: ft.Page, raw_prefs=None):
             c_serv_days.value = ""
             paint_calc()
 
-        for ctl in [c_voto, c_lode, c_dig, c_digedu, *c_extra.values()]:
+        for ctl in [c_voto, c_lode, c_dig, c_digedu, c_itp, *c_extra.values()]:
             ctl.on_change = paint_calc
-        for ctl in (c_master, c_lingua):
+        for ctl in (c_master, c_lingua, c_tipo, c_vabil):
             ctl.on_select = paint_calc
         c_serv_days.on_submit = add_service
 
+        calc_origin = {"home": False}
+
         def close_calc(e=None):
             calc_view.visible = False
-            gps_view.visible = True
+            (home_view if calc_origin["home"] else gps_view).visible = True
             page.update()
 
         def use_score(e=None):
             total, _parts = calc_total()
             gps_score_field.value = fmt_score(total)
+            calc_origin["home"] = False          # il punteggio si usa nella pagina «Dove fare le GPS»
             close_calc()
 
         restore_calc()
 
-        def open_calc(e=None):
+        def open_calc(e=None, from_home=False):
+            calc_origin["home"] = from_home
             gps_view.visible = False
+            home_view.visible = False
             calc_view.visible = True
             paint_calc()
 
@@ -2689,7 +2736,7 @@ def build(page: ft.Page, raw_prefs=None):
         calc_body = ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, controls=[
             ft.Container(padding=ft.Padding.only(left=16, right=16, top=16, bottom=28), content=ft.Column(
                 spacing=14, controls=[
-                    calc_section("1. Titolo di accesso", [c_voto, c_lode]),
+                    calc_section("1. Titolo di accesso", [c_tipo, c_voto, c_lode, c_vabil, c_itp, c_abil_note]),
                     calc_section("2. Titoli aggiuntivi", [*c_extra.values(), c_master, c_lingua, c_dig, c_digedu]),
                     calc_section("3. Servizio prestato", [
                         ft.Text("Un inserimento per ogni anno scolastico (massimo 12 punti l'anno). Il servizio "
@@ -3260,7 +3307,7 @@ def build(page: ft.Page, raw_prefs=None):
                         menu_tile(ft.Icons.TRAVEL_EXPLORE_ROUNDED, "Dove fare le GPS", "Province e riserva del 15%",
                                   lambda e: open_menu_item(open_gps)),
                         menu_tile(ft.Icons.CALCULATE_ROUNDED, "Calcola punteggio", "Titoli, servizio, certificazioni",
-                                  lambda e: open_menu_item(open_calc))]),
+                                  lambda e: open_menu_item(lambda: open_calc(from_home=True)))]),
                     menu_label("APP"),
                     ft.Row(spacing=12, controls=[
                         menu_tile(ft.Icons.TUNE_ROUNDED, "Le mie classi", "Classi, nome per le candidature",
