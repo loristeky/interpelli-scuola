@@ -29,9 +29,14 @@ VISTI = Path(__file__).with_name("bollettini_visti.json")
 EXTRA = Path(__file__).with_name("pagine_bollettini.json")
 MAX_BYTES = 60_000_000
 DOC_RE = re.compile(r"\.(pdf|xlsx|xlsm)(?:$|[?#])", re.I)
-TITLE_RE = re.compile(r"bollettin\w*|\bnomin[ae]\w*|\besit[io]\b|\bconvocazion\w*", re.I)
-GPS_RE = re.compile(r"\bgps\b|graduatori\w*\s+provincial|supplenz|docent|sostegno|\bgi\b|\bi{1,2}\s*fascia", re.I)
-SKIP_RE = re.compile(r"\bata\b|\bdsga\b|personale\s+ata|collaborator\w*|assistent\w*|educativ\w*|religion\w*|\birc\b", re.I)
+# Un avviso è un bollettino GPS solo se dice «bollettino» o «nomine (a tempo determinato / da GPS)».
+TITLE_RE = re.compile(r"bollettin\w*|\bnomin[ae]\s+(?:a\s+tempo\s+determinato|da\s+gps|gps|supplenz\w*)|\bnomine\s+gps\b", re.I)
+GPS_RE = re.compile(r"\bgps\b|graduatori\w*\s+provincial|supplenz|docent|sostegno|tempo\s+determinato", re.I)
+# ...e non se parla d'altro (immissioni in ruolo, GAE, interpelli, rettifiche, disponibilità, decreti, ATA).
+SKIP_RE = re.compile(r"\bata\b|\bdsga\b|personale\s+ata|collaborator\w*|assistent\w*|educativ\w*|religion\w*|\birc\b|"
+                     r"immission\w*|\bin\s+ruolo|\bgae\b|\bgm\b|ad\s+esaurimento|concors\w*|interpell\w*|rettific\w*|"
+                     r"disponibilit\w*|decret\w*|riscontro|\bmad\b|mobilit\w*|assunzion\w*|tempo\s+indeterminato|"
+                     r"\bposti\s+residu\w*|cattedre", re.I)
 
 
 # Siti che ospitano più uffici: la prima parte del percorso dice quale (es. istruzionepiemonte.it/torino/).
@@ -84,6 +89,14 @@ def elenco_links(page_html, base):
     """Collegamenti ai bollettini in una pagina-elenco: [(testo, url)], senza rettifiche."""
     m = re.search(r"<article\b.*</article>", page_html, re.S | re.I)
     body = m.group(0) if m else page_html
+    # Solo la sezione «I bollettini delle nomine GaE – GPS al 31 agosto e 30 giugno…»: più su ci sono altri link
+    # (notizie, articoli collegati) che non c'entrano.
+    h = re.search(r"bollettini\s+delle\s+nomine\s+GaE", re.sub(r"<[^>]+>", "", body), re.I)
+    if h:
+        tagged = re.search(r"b\s*o\s*l\s*l\s*e\s*t\s*t\s*i\s*n\s*i(?:\s|<[^>]+>|&nbsp;)+delle(?:\s|<[^>]+>|&nbsp;)+nomine(?:\s|<[^>]+>|&nbsp;)+GaE",
+                           body, re.I)
+        if tagged:
+            body = body[tagged.start():]
     out = []
     for href, txt in re.findall(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', body, re.I | re.S):
         url = urljoin(base, unescape(href))
@@ -136,11 +149,13 @@ def links_of(page_html, base):
 
 
 def doc_links(page_html, base):
+    """Allegati PDF/Excel di una pagina, tranne quelli che dal nome non sono bollettini (decreti, rettifiche...)."""
     found = []
-    for href in re.findall(r'href=["\']([^"\']+)["\']', page_html, re.I):
+    for href, txt in re.findall(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', page_html, re.I | re.S):
         if DOC_RE.search(href):
             u = urljoin(base, unescape(href))
-            if u not in found:
+            label = clean(txt) + " " + unquote(u.rsplit("/", 1)[-1])
+            if u not in found and not SKIP_RE.search(label):
                 found.append(u)
     return found
 
@@ -151,13 +166,36 @@ def same_site(a, b):
         ha.removeprefix("www.") == hb.removeprefix("www.")
 
 
+ROMANI = {"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6, "VII": 7, "VIII": 8, "IX": 9, "X": 10, "XI": 11, "XII": 12,
+          "XIII": 13, "XIV": 14, "XV": 15}
+
+
 def turn_of(title, fallback):
+    m = re.search(r"\b(XV|XIV|XIII|XII|XI|X|IX|VIII|VII|VI|IV|V|III|II|I)\b\s*[°ºª]?\s*(?i:bollettino|turno)", title)
+    if m:
+        return str(ROMANI[m.group(1)])
     for pat in (r"boll\w*\s*(?:n\.?|numero|nr\.?)?\s*(\d{1,2})\b", r"\b(\d{1,2})\s*[°ºª]?\s*(?:turno|bollettino|convocazione)",
                 r"(?:turno|convocazione)\s*(?:n\.?\s*)?(\d{1,2})\b"):
         m = re.search(pat, title, re.I)
         if m and 1 <= int(m.group(1)) <= 30:
             return str(int(m.group(1)))
     return fallback
+
+
+def sembra_bollettino_gps(path):
+    """Controlla il testo: deve parlare di GPS/supplenze e non di immissioni in ruolo, GAE, concorsi."""
+    if str(path).lower().endswith((".xlsx", ".xlsm")):
+        return True
+    try:
+        import subprocess
+        txt = subprocess.run(["pdftotext", "-l", "3", str(path), "-"], capture_output=True, text=True, timeout=60).stdout.lower()
+    except Exception:
+        return True                       # senza pdftotext non si può controllare: lo decide il lettore
+    if not txt.strip():
+        return True                       # PDF scansionato: lo decide il lettore
+    gps = re.search(r"\bgps\b|graduatori\w*\s+provincial|supplenz|tempo\s+determinato", txt)
+    bad = re.search(r"immission\w*\s+in\s+ruolo|ad\s+esaurimento|\bgae\b|tempo\s+indeterminato|interpell", txt)
+    return bool(gps) and not (bad and not re.search(r"\bgps\b", txt))
 
 
 def download(url, dest):
@@ -187,7 +225,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--cartella", default="bollettini")
     ap.add_argument("--prova", action="store_true", help="elenca cosa scaricherebbe, senza scaricare né ricordare nulla")
-    ap.add_argument("--max", type=int, default=40, help="massimo di file scaricati per esecuzione")
+    ap.add_argument("--max", type=int, default=150, help="massimo di file scaricati per esecuzione")
     args = ap.parse_args(argv)
 
     app = load_app()
@@ -217,6 +255,17 @@ def main(argv=None):
         return name, url, list(dict.fromkeys(cands)), None
 
     todo = []
+    for url in ELENCHI + [x["url"] for x in read_json(EXTRA, []) if isinstance(x, dict) and x.get("tipo") == "elenco"]:
+        try:
+            page = app.fetch_url(url)
+            found = elenco_links(page, url)
+            print(f"Elenco {url[:70]}...: pagina di {len(page)} caratteri, {len(found)} collegamenti ai bollettini")
+            for title, link in found:
+                if link not in seen:
+                    todo.append((province_in(title) or "Bollettino", url, title, link))
+        except Exception as ex:
+            print(f"[!] elenco {url[:70]}: non raggiungibile ({str(ex)[:60]})")
+    n_elenco = len(todo)
     with ThreadPoolExecutor(max_workers=12) as ex:
         for name, url, cands, err in ex.map(scan, sources):
             if err:
@@ -224,14 +273,7 @@ def main(argv=None):
             for title, link in cands:
                 if link not in seen:
                     todo.append((name, url, title, link))
-    for url in ELENCHI + [x["url"] for x in read_json(EXTRA, []) if isinstance(x, dict) and x.get("tipo") == "elenco"]:
-        try:
-            for title, link in elenco_links(app.fetch_url(url), url):
-                if link not in seen:
-                    todo.append((province_in(title) or "Bollettino", url, title, link))
-        except Exception as ex:
-            print(f"[!] elenco {url[:70]}: non raggiungibile ({str(ex)[:60]})")
-    print(f"Candidati nuovi: {len(todo)}")
+    print(f"Candidati nuovi: {len(todo)} ({n_elenco} dall'elenco, {len(todo) - n_elenco} dalle pagine degli uffici)")
 
     out = Path(args.cartella)
     out.mkdir(parents=True, exist_ok=True)
@@ -270,6 +312,9 @@ def main(argv=None):
                 continue
             err = download(doc, dest)
             seen.add(doc)
+            if not err and not sembra_bollettino_gps(dest):
+                dest.unlink(missing_ok=True)
+                err = "non è un bollettino GPS (immissioni in ruolo, GAE o altro)"
             if err:
                 print(f"[!] {name}: {doc}: {err}")
             else:
