@@ -1453,7 +1453,6 @@ def build(page: ft.Page, raw_prefs=None):
             load_results(reset=True)
 
         stats_row = ft.Row(spacing=10, controls=[
-            stat_tile("open", "Aperti ora", lambda e: stat_filter("active")),
             stat_tile("soon", "In scadenza", lambda e: stat_filter("soon")),
             stat_tile("mine", "Per te", lambda e: set_profile("ME")),
         ])
