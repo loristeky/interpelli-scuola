@@ -124,6 +124,7 @@
 "https://www.istruzione-ancona.it/nomine-a-tempo-determinato-a-s-2026-2027-3/",
 "https://www.istruzione-ancona.it/nomine-a-tempo-determinato-a-s-2026-2027/",
 "https://www.istruzione-ancona.it/personale-docente-nomine-a-tempo-determinato-45/",
+"https://www.istruzione-ancona.it/personale-docente-nomine-a-tempo-determinato-46/",
 "https://www.istruzione.calabria.it/catanzaro/personale-docente-supplenze-a-s-2026-2027-v-bollettino-di-nomine/",
 "https://www.istruzione.calabria.it/catanzaro/personale-docente-supplenze-a-s-2026-2027-vi-bollettino-di-nomine/",
 "https://www.istruzione.calabria.it/catanzaro/wp-content/uploads/2026/10/BollettinoTotaleNomine_6-1.pdf",
@@ -155,6 +156,16 @@
 "https://www.istruzionelaspezia.gov.it/pagine/individuazione-destinatari-nomine-per-supplenza-da-gps---ii-turno-11092026-1",
 "https://www.istruzionematera.it/1-bollettino-nomine-a-tempo-determinato-a-s-2026-27/",
 "https://www.istruzionematera.it/wp-content/uploads/2026/09/1°-Bollettino-nomine-a-t.d.-a.s.-26_27.pdf",
+"https://www.istruzionepiemonte.it/alessandria-asti/nomine-gps-bolletino-1-asti/",
+"https://www.istruzionepiemonte.it/alessandria-asti/nomine-gps-bollettino-n-1-supplenze-alessandria/",
+"https://www.istruzionepiemonte.it/alessandria-asti/wp-content/uploads/sites/3/2026/08/Bollettino_TotaleNomine-2.xlsx",
+"https://www.istruzionepiemonte.it/alessandria-asti/wp-content/uploads/sites/3/2026/08/m_pi.AOOUSPAT.REGISTRO-UFFICIALEU.0003748.28-08-2026-1.pdf",
+"https://www.istruzionepiemonte.it/cuneo/nomine-gps-fase-5-5/",
+"https://www.istruzionepiemonte.it/cuneo/wp-content/uploads/sites/5/2026/08/Bollettino_TotaleNominePDF.pdf",
+"https://www.istruzionepiemonte.it/cuneo/wp-content/uploads/sites/5/2026/08/Bollettino_TotaleNominePDF.xlsx",
+"https://www.istruzionepiemonte.it/novara/procedura-informatizzata-supplenze-esito-conferimento-incarichi-a-tempo-determinato-candidati-inseriti-nelle-graduatorie-provinciali-supplenze-gps-primo-turno/",
+"https://www.istruzionepiemonte.it/novara/wp-content/uploads/sites/6/2026/08/Bollettino-Nomine-del-28.08.2026-DEFINITIVO.pdf",
+"https://www.istruzionepiemonte.it/novara/wp-content/uploads/sites/6/2026/08/m_pi.AOOUSPNO.REGISTRO-UFFICIALEI.0004793.28-08-2026.pdf",
 "https://www.istruzionepotenza.it/41010-2/",
 "https://www.istruzionepotenza.it/wp-content/uploads/2026/09/1_Bollettino-PRIVACY.pdf",
 "https://www.istruzionesavona.gov.it/pagine/nomine-da-gps-turno-1",
@@ -339,7 +350,7 @@
 ],
 "turni": {
 "Pescara": 4,
-"Bollettino": 35,
+"Bollettino": 37,
 "Matera": 1,
 "Potenza": 1,
 "Cosenza": 2,
@@ -370,6 +381,7 @@
 "Chieti e Pescara": 5,
 "Caserta": 19,
 "Piacenza": 11,
-"Rovigo": 7
+"Rovigo": 7,
+"Asti": 2
 }
 }
