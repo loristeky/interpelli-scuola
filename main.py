@@ -12,7 +12,7 @@ from datetime import datetime, date, timedelta
 from email.utils import parsedate_to_datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.request import Request, urlopen
-from urllib.parse import urljoin, quote
+from urllib.parse import urljoin, urlparse, quote
 import xml.etree.ElementTree as ET
 
 
@@ -729,7 +729,35 @@ def log_source(name, ok=None, found=0, new=0, err=""):
     e["new"] += new
 
 
-def parse_source_page(region, source_name, url, known):
+# Ricerca «in profondità»: oltre alle pagine degli interpelli si guarda anche il resto del sito di ogni ufficio
+# (home, feed delle notizie, comunicazioni, avvisi) e si tengono solo gli avvisi che parlano di interpelli.
+INTERPELLO_RE = re.compile(r"interpell\w*|\binterp\b\.?|ricerca\s+(?:di\s+)?supplent\w*|\bmad\b\s+urgent\w*", re.I)
+DEEP_PATHS = ("", "feed/", "category/notizie/", "category/comunicazioni/", "category/avvisi/")
+MULTI_UFFICIO = ("istruzionepiemonte.it", "toscana.istruzione.it", "toscana-istruzione.it", "mim.gov.it")
+
+
+def deep_pages(regions_sources):
+    """[(regione, nome ufficio, indirizzo)] delle pagine di notizie dei siti degli uffici, ricavate dalle fonti."""
+    out, seen = [], set()
+    for region, sources in regions_sources:
+        for src in sources:
+            name, url = src[0], src[1]
+            u = urlparse(url)
+            if u.scheme not in ("http", "https") or not u.netloc:
+                continue
+            seg = [x for x in u.path.split("/") if x]
+            prefix = ""
+            if seg and any(u.netloc.lower().endswith(h) for h in MULTI_UFFICIO) and seg[0] not in ("category", "tag", "web", "feed"):
+                prefix = "/" + seg[0]
+            base = f"{u.scheme}://{u.netloc}{prefix}/"
+            if base in seen:
+                continue
+            seen.add(base)
+            out += [(region, name, base + path) for path in DEEP_PATHS]
+    return out
+
+
+def parse_source_page(region, source_name, url, known, deep=False):
     """Scarica una pagina-fonte e restituisce (nuovi_interpelli, raggiungibile).
 
     Gli avvisi già presenti nel database (`known`) non vengono riscaricati:
@@ -739,7 +767,8 @@ def parse_source_page(region, source_name, url, known):
     try:
         html_content = fetch_url(url)
     except Exception as ex:
-        log_source(source_name, err=short_error(ex))
+        if not deep:                      # le pagine «provate» spesso non esistono: nessun errore da segnalare
+            log_source(source_name, err=short_error(ex))
         return [], False
 
     lower_content = html_content.lower()
@@ -788,6 +817,8 @@ def parse_source_page(region, source_name, url, known):
                 pub_date_str = f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}" if date_match else ""
                 items.append((title, full_url, pub_date_str))
 
+    if deep:
+        items = [it for it in items if INTERPELLO_RE.search(it[0])]
     results = []
     seen_links = set()
     for title, link, pub_date in items:
@@ -816,7 +847,8 @@ def parse_source_page(region, source_name, url, known):
 
         results.append((title, link, region, source_name, target, published, info["deadline"], cdc, post_type,
                         info["doc_url"], info["email"]))
-    log_source(source_name, ok=True, found=len(items), new=len(results))
+    if not deep:
+        log_source(source_name, ok=True, found=len(items), new=len(results))
     return results, True
 
 
@@ -1138,7 +1170,7 @@ def build(page: ft.Page, raw_prefs=None):
         # ---- Preferenze dell'utente (classi di concorso, dati per le candidature)
         prefs = {"classes": [], "name": "", "phone": "", "gps_class": "", "gps_score": "",
                  "fav": [], "applied": [], "profiles": [], "theme": "", "calc": {},
-                 "sources": [], "src_status": {}}
+                 "sources": [], "src_status": {}, "deep": True}
 
         store = ft.SharedPreferences()
 
@@ -1178,6 +1210,8 @@ def build(page: ft.Page, raw_prefs=None):
                     if isinstance(data.get("src_status"), dict):
                         prefs["src_status"] = {k: v for k, v in data["src_status"].items()
                                                if isinstance(k, str) and isinstance(v, dict)}
+                    if isinstance(data.get("deep"), bool):
+                        prefs["deep"] = data["deep"]
                     if data.get("theme") in ("light", "dark"):
                         prefs["theme"] = data["theme"]
                     for key in ("name", "phone", "gps_class", "gps_score"):
@@ -2819,9 +2853,12 @@ def build(page: ft.Page, raw_prefs=None):
                             for p in range(1, max_pages + 1):
                                 tasks_info.append((reg, source_name, get_page_url(base_url, p)))
 
+                    tasks_info = [(r, n, u, False) for r, n, u in tasks_info]
+                    if prefs.get("deep", True):
+                        tasks_info += [(r, n, u, True) for r, n, u in deep_pages(target_sources.items())]
                     if not region or region == "Altre fonti":
                         for custom in prefs["sources"]:
-                            tasks_info.append(("Altre fonti", custom["n"], custom["u"]))
+                            tasks_info.append(("Altre fonti", custom["n"], custom["u"], False))
                     SOURCE_LOG.clear()
                     total = len(tasks_info)
                     completed = 0
@@ -2830,8 +2867,8 @@ def build(page: ft.Page, raw_prefs=None):
                     shown_new = 0
 
                     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-                        futures = [executor.submit(parse_source_page, reg, src, url, known)
-                                   for reg, src, url in tasks_info]
+                        futures = [executor.submit(parse_source_page, reg, src, url, known, deep)
+                                   for reg, src, url, deep in tasks_info]
                         for future in as_completed(futures):
                             completed += 1
                             try:
@@ -3064,6 +3101,13 @@ def build(page: ft.Page, raw_prefs=None):
         sv_list = ft.Column(spacing=8)
         sv_hint = ft.Text("", size=12, color=ft.Colors.ERROR)
 
+        def set_deep(e=None):
+            prefs["deep"] = bool(sv_deep.value)
+            save_prefs()
+
+        sv_deep = ft.Switch(label="Cerca anche nel resto del sito di ogni ufficio", value=prefs.get("deep", True),
+                            on_change=set_deep)
+
         def source_state(name):
             st = prefs["src_status"].get(name)
             if not st:
@@ -3179,6 +3223,11 @@ def build(page: ft.Page, raw_prefs=None):
         sources_body = ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, controls=[
             ft.Container(padding=ft.Padding.only(left=16, right=16, top=16, bottom=28), content=ft.Column(
                 spacing=14, controls=[
+                    section_card([
+                        sv_deep,
+                        ft.Text("Oltre alle pagine degli interpelli, guarda la home, le notizie e le comunicazioni di "
+                                "ogni ufficio e tiene solo gli avvisi che parlano di interpelli. La ricerca dura un po' "
+                                "di più e usa più dati.", size=12, color=ft.Colors.ON_SURFACE_VARIANT)]),
                     section_card([
                         ft.Text("Aggiungi una fonte", size=14, weight=ft.FontWeight.W_700),
                         ft.Text("Incolla l'indirizzo della pagina degli interpelli di una scuola, di un ambito o di un "
