@@ -977,17 +977,19 @@ def fmt_score(value):
 
 def gps_reserved_tail(ordered, quota):
     """Riservisti riconoscibili da un salto di posizione: i chiamati si seguono in ordine di posizione, quindi uno che
-    arriva dopo un salto grande (es. dalla 20ª alla 80ª) è quasi certamente entrato dalla riserva.
+    arriva dopo un salto grande (es. dalla 79ª alla 144ª) è quasi certamente entrato dalla riserva.
     Restituisce da quale indice (in ordine di posizione) i chiamati sono riservisti, o None se non c'è un salto
-    credibile. La coda tagliata non può superare la quota del 15%."""
+    credibile. Il salto è una prova a sé: la coda può essere anche più grande della quota calcolata (che con pochi
+    chiamati arrotonda a 0), ma al massimo max(quota, 3) persone e meno della metà dei chiamati."""
     by_pos = sorted(ordered, key=lambda x: x[1])
-    if quota < 1 or len(by_pos) < 3:
+    if len(by_pos) < 3:
         return None, by_pos
     gaps = sorted(by_pos[i][1] - by_pos[i - 1][1] for i in range(1, len(by_pos)))
     median = gaps[len(gaps) // 2]
     jump = max(20, 5 * max(1, median))
+    cap = max(quota, min(3, len(by_pos) // 2))
     for j in range(1, len(by_pos)):
-        if by_pos[j][1] - by_pos[j - 1][1] > jump and len(by_pos) - j <= quota:
+        if by_pos[j][1] - by_pos[j - 1][1] > jump and len(by_pos) - j <= cap:
             return j, by_pos
     return None, by_pos
 
