@@ -1,32 +1,11 @@
-# Rapporto sulle fonti (28/10/2026 23:01)
+# Rapporto sulle fonti (28/10/2026 23:43)
 
-Fonti controllate: 68. Funzionano: 52. Da guardare: 16.
+Fonti controllate: 68. Funzionano: 56. Da guardare: 12.
 
 ## Da guardare
 
 ### USP Salerno (Campania) - irraggiungibile
 - Indirizzo attuale: https://uat-salerno.it/Documenti/CIRCOLARI/Interpelli-per-reclutamento-personale-docente
-
-### USP Latina (Lazio) - irraggiungibile
-- Indirizzo attuale: https://www.csalatina.it/category/interpelli/feed/
-
-### USP Milano (Lombardia) - irraggiungibile
-- Indirizzo attuale: https://milano.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/
-
-### USP Pavia (Lombardia) - irraggiungibile
-- Indirizzo attuale: https://pavia.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/
-
-### USP Varese (Lombardia) - irraggiungibile
-- Indirizzo attuale: https://varese.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/
-
-### USP Campobasso (Molise) - irraggiungibile
-- Indirizzo attuale: https://www.uspcampobasso.it/category/interpelli/feed/
-- Forse: [Itinerari a Campobasso e in Molise: un viaggio scandito dai turni delle stagioni](https://www.uspcampobasso.it/index.php?option=com_content&view=article&id=2531:conferimento-nomine-a-tempo-determinato-su-posti-curriculari-e-posti-di-sostegno-del-personale-docente-ed-educativo-da-gae-e-da-gps-a-s-2023-2024-scuola-dell-infanzia-e-primaria-scuola-secondaria-di-i-e-ii-grado-personale-educativo-iii-turno&catid=2&Itemid=105)
-- Forse: [Campobasso: guida di viaggio tra storia, scuole e quartieri della città](https://www.uspcampobasso.it/index.php?option=com_content&view=article&id=2531:conferimento-nomine-a-tempo-determinato-su-posti-curriculari-e-posti-di-sostegno-del-personale-docente-ed-educativo-da-gae-e-da-gps-a-s-2023-2024-scuola-dell-infanzia-e-primaria-scuola-secondaria-di-i-e-ii-grado-personale-educativo-iii-turno&catid=2&Itemid=105&tmpl=component&print=1&layout=default&page=)
-- Forse: [Conferimento Nomine a Tempo Determinato per il Personale Docente: Un Sguardo Dettagliato](https://www.uspcampobasso.it/index.php?option=com_content&view=article&id=2539:conferimento-nomine-a-tempo-determinato-su-posti-curriculari-e-posti-di-sostegno-personale-docente-da-gae-e-da-gps-a-s-2023-2024-scuola-primaria-scuola-secondaria-di-i-e-ii-grado-5-turno&catid=2&Itemid=105&tmpl=component&print=1&layout=default&page=)
-- Forse: [Campobasso: guida di viaggio tra storia, natura e sapori del Molise](https://www.uspcampobasso.it/index.php?option=com_content&view=article&id=2536:conferimento-nomine-a-tempo-determinato-su-posti-curriculari-e-posti-di-sostegno-del-personale-docente-ed-educativo-da-gae-e-da-gps-a-s-2023-2024-scuola-primaria-scuola-secondaria-di-i-e-ii-grado-personale-educativo-iv-turno&catid=2&Itemid=105&tmpl=component&print=1&layout=default&page=)
-- Forse: [Supplenze Annuali e Graduatorie Docenti: Come Navigare il Processo](https://www.uspcampobasso.it/index.php?option=com_content&view=article&id=2532:supplenze-annuali-e-fino-al-termine-delle-attivita-didattiche-personale-docente-per-gli-aspiranti-inclusi-in-gae-e-gps-di-i-e-ii-fascia-integrazione-graduatorie-esaurite&catid=2&Itemid=105&tmpl=component&print=1&layout=default&page=)
-- Forse: [Scoprire Campobasso e il Molise seguendo i turni delle stagioni](https://www.uspcampobasso.it/index.php?option=com_content&view=article&id=2539:conferimento-nomine-a-tempo-determinato-su-posti-curriculari-e-posti-di-sostegno-personale-docente-da-gae-e-da-gps-a-s-2023-2024-scuola-primaria-scuola-secondaria-di-i-e-ii-grado-5-turno&catid=2&Itemid=105)
 
 ### USP Pisa (Toscana) - irraggiungibile
 - Indirizzo attuale: https://www.toscana-istruzione.it/atpisa/category/news/
@@ -72,6 +51,14 @@ Fonti controllate: 68. Funzionano: 52. Da guardare: 16.
 - Forse: [Reclutamento](https://mo.istruzioneer.gov.it/category/reclutamento/)
 - Forse: [interpelli](https://mo.istruzioneer.gov.it/tag/interpelli/)
 - Forse: [interpelli personale docente 26/27](https://mo.istruzioneer.gov.it/tag/interpelli-personale-docente-26-27/)
+
+### USP Latina (Lazio) - vuota
+- Indirizzo attuale: https://www.csalatina.it/interpelli/
+- La pagina si apre ma non ci trovo avvisi: forse è cambiata la struttura o è la pagina sbagliata.
+- Forse: [Home](https://www.csalatina.it/interpelli/)
+- Forse: [Password dimenticata?](https://www.csalatina.it/interpelli/index.php?option=com_user&view=reset)
+- Forse: [Nome utente dimenticato?](https://www.csalatina.it/interpelli/index.php?option=com_user&view=remind)
+- Forse: [Advanced search](https://www.csalatina.it/interpelli/index.php?option=com_fabrik&view=table&layout=_advancedsearch&tmpl=component&tableid=2&nextview=table&nextcontroller=table)
 
 ### USP Lecco (Lombardia) - vuota
 - Indirizzo attuale: https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti
@@ -135,10 +122,14 @@ Fonti controllate: 68. Funzionano: 52. Da guardare: 16.
 - USP Cremona (Lombardia): 201 avvisi
 - USP Lodi (Lombardia): 1 avvisi
 - USP Mantova (Lombardia): 3 avvisi
+- USP Milano (Lombardia): 1 avvisi
 - USP Monza brianza (Lombardia): 200 avvisi
+- USP Pavia (Lombardia): 59 avvisi
 - USP Sondrio (Lombardia): 200 avvisi
+- USP Varese (Lombardia): 198 avvisi
 - USP Ancona (Marche): 10 avvisi
 - USP Pesaro Urbino (Marche): 6 avvisi
+- USP Campobasso (Molise): 3 avvisi
 - USP Torino (Piemonte): 9 avvisi
 - USP Bari (Puglia): 42 avvisi
 - USP Foggia (Puglia): 10 avvisi

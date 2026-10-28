@@ -241,11 +241,28 @@
  {
   "regione": "Lazio",
   "nome": "USP Latina",
-  "url": "https://www.csalatina.it/category/interpelli/feed/",
-  "stato": "irraggiungibile",
+  "url": "https://www.csalatina.it/interpelli/",
+  "stato": "vuota",
   "avvisi": 0,
   "dettaglio": "",
-  "proposte": []
+  "proposte": [
+   [
+    "https://www.csalatina.it/interpelli/",
+    "Home"
+   ],
+   [
+    "https://www.csalatina.it/interpelli/index.php?option=com_user&view=reset",
+    "Password dimenticata?"
+   ],
+   [
+    "https://www.csalatina.it/interpelli/index.php?option=com_user&view=remind",
+    "Nome utente dimenticato?"
+   ],
+   [
+    "https://www.csalatina.it/interpelli/index.php?option=com_fabrik&view=table&layout=_advancedsearch&tmpl=component&tableid=2&nextview=table&nextcontroller=table",
+    "Advanced search"
+   ]
+  ]
  },
  {
   "regione": "Lazio",
@@ -298,11 +315,10 @@
  {
   "regione": "Lombardia",
   "nome": "USP Milano",
-  "url": "https://milano.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/",
-  "stato": "irraggiungibile",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": []
+  "url": "https://www.mim.gov.it/web/milano/interpelli-ricerca-supplenti",
+  "stato": "ok",
+  "avvisi": 1,
+  "dettaglio": ""
  },
  {
   "regione": "Lombardia",
@@ -397,11 +413,10 @@
  {
   "regione": "Lombardia",
   "nome": "USP Pavia",
-  "url": "https://pavia.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/",
-  "stato": "irraggiungibile",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": []
+  "url": "https://www.mim.gov.it/web/pavia/interpelli-ricerca-supplenti",
+  "stato": "ok",
+  "avvisi": 59,
+  "dettaglio": ""
  },
  {
   "regione": "Lombardia",
@@ -414,11 +429,10 @@
  {
   "regione": "Lombardia",
   "nome": "USP Varese",
-  "url": "https://varese.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/",
-  "stato": "irraggiungibile",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": []
+  "url": "https://www.mim.gov.it/web/varese/interpelli-ricerca-supplenti",
+  "stato": "ok",
+  "avvisi": 198,
+  "dettaglio": ""
  },
  {
   "regione": "Marche",
@@ -439,36 +453,10 @@
  {
   "regione": "Molise",
   "nome": "USP Campobasso",
-  "url": "https://www.uspcampobasso.it/category/interpelli/feed/",
-  "stato": "irraggiungibile",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": [
-   [
-    "https://www.uspcampobasso.it/index.php?option=com_content&view=article&id=2531:conferimento-nomine-a-tempo-determinato-su-posti-curriculari-e-posti-di-sostegno-del-personale-docente-ed-educativo-da-gae-e-da-gps-a-s-2023-2024-scuola-dell-infanzia-e-primaria-scuola-secondaria-di-i-e-ii-grado-personale-educativo-iii-turno&catid=2&Itemid=105",
-    "Itinerari a Campobasso e in Molise: un viaggio scandito dai turni delle stagioni"
-   ],
-   [
-    "https://www.uspcampobasso.it/index.php?option=com_content&view=article&id=2531:conferimento-nomine-a-tempo-determinato-su-posti-curriculari-e-posti-di-sostegno-del-personale-docente-ed-educativo-da-gae-e-da-gps-a-s-2023-2024-scuola-dell-infanzia-e-primaria-scuola-secondaria-di-i-e-ii-grado-personale-educativo-iii-turno&catid=2&Itemid=105&tmpl=component&print=1&layout=default&page=",
-    "Campobasso: guida di viaggio tra storia, scuole e quartieri della città"
-   ],
-   [
-    "https://www.uspcampobasso.it/index.php?option=com_content&view=article&id=2539:conferimento-nomine-a-tempo-determinato-su-posti-curriculari-e-posti-di-sostegno-personale-docente-da-gae-e-da-gps-a-s-2023-2024-scuola-primaria-scuola-secondaria-di-i-e-ii-grado-5-turno&catid=2&Itemid=105&tmpl=component&print=1&layout=default&page=",
-    "Conferimento Nomine a Tempo Determinato per il Personale Docente: Un Sguardo Dettagliato"
-   ],
-   [
-    "https://www.uspcampobasso.it/index.php?option=com_content&view=article&id=2536:conferimento-nomine-a-tempo-determinato-su-posti-curriculari-e-posti-di-sostegno-del-personale-docente-ed-educativo-da-gae-e-da-gps-a-s-2023-2024-scuola-primaria-scuola-secondaria-di-i-e-ii-grado-personale-educativo-iv-turno&catid=2&Itemid=105&tmpl=component&print=1&layout=default&page=",
-    "Campobasso: guida di viaggio tra storia, natura e sapori del Molise"
-   ],
-   [
-    "https://www.uspcampobasso.it/index.php?option=com_content&view=article&id=2532:supplenze-annuali-e-fino-al-termine-delle-attivita-didattiche-personale-docente-per-gli-aspiranti-inclusi-in-gae-e-gps-di-i-e-ii-fascia-integrazione-graduatorie-esaurite&catid=2&Itemid=105&tmpl=component&print=1&layout=default&page=",
-    "Supplenze Annuali e Graduatorie Docenti: Come Navigare il Processo"
-   ],
-   [
-    "https://www.uspcampobasso.it/index.php?option=com_content&view=article&id=2539:conferimento-nomine-a-tempo-determinato-su-posti-curriculari-e-posti-di-sostegno-personale-docente-da-gae-e-da-gps-a-s-2023-2024-scuola-primaria-scuola-secondaria-di-i-e-ii-grado-5-turno&catid=2&Itemid=105",
-    "Scoprire Campobasso e il Molise seguendo i turni delle stagioni"
-   ]
-  ]
+  "url": "https://www.mim.gov.it/web/campobasso/interpelli",
+  "stato": "ok",
+  "avvisi": 3,
+  "dettaglio": ""
  },
  {
   "regione": "Piemonte",
