@@ -29,6 +29,8 @@ ATA_KEYWORDS = [
     "infermiere", "infermieri", "guardarobiere", "guardarobieri"
 ]
 
+PRIVACY_URL = "https://github.com/loristeky/Interpelli-Docenti-e-ATA/blob/main/privacy-policy.md"
+
 SOURCES = {
     "Abruzzo": [
         ("USP Chieti e Pescara", "https://www.istruzionechietipescara.it/category/interpelli-provinciali/feed/", 1),
@@ -3665,7 +3667,9 @@ def build(page: ft.Page, raw_prefs=None):
                 ft.Text("L'app non è collegata né affiliata al Ministero dell'Istruzione e del Merito. "
                         "Non raccoglie dati personali: classi e preferenze restano sul tuo telefono.",
                         size=13)]),
-            actions=[ft.TextButton("Chiudi", on_click=lambda e: close_dialog(info_dlg))])
+            actions=[ft.TextButton("Informativa sulla privacy", icon=ft.Icons.PRIVACY_TIP_OUTLINED,
+                                   on_click=lambda e: open_url(PRIVACY_URL)),
+                     ft.TextButton("Chiudi", on_click=lambda e: close_dialog(info_dlg))])
 
         theme_label = {"": "Come il telefono", "light": "Chiaro", "dark": "Scuro"}
         theme_sub = ft.Text(theme_label[prefs["theme"]], size=11.5, color=ft.Colors.ON_SURFACE_VARIANT)
