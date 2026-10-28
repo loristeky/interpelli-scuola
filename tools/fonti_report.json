@@ -233,11 +233,10 @@
  {
   "regione": "Lazio",
   "nome": "USP Frosinone",
-  "url": "https://lnx.uspistruzione.fr.it/wp2/category/interpello-nazionale/feed/",
-  "stato": "irraggiungibile",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": []
+  "url": "https://www.uspistruzione.fr.it/wp2/tag/interpello-nazionale/",
+  "stato": "ok",
+  "avvisi": 13,
+  "dettaglio": ""
  },
  {
   "regione": "Lazio",
@@ -308,29 +307,26 @@
  {
   "regione": "Lombardia",
   "nome": "USP Brescia",
-  "url": "https://brescia.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/",
-  "stato": "irraggiungibile",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": []
+  "url": "https://www.mim.gov.it/web/brescia/interpelli-ricerca-supplenti/",
+  "stato": "ok",
+  "avvisi": 200,
+  "dettaglio": ""
  },
  {
   "regione": "Lombardia",
   "nome": "USP Bergamo",
-  "url": "https://bergamo.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/",
-  "stato": "irraggiungibile",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": []
+  "url": "https://www.mim.gov.it/web/bergamo/interpelli-ricerca-supplenti/",
+  "stato": "ok",
+  "avvisi": 201,
+  "dettaglio": ""
  },
  {
   "regione": "Lombardia",
   "nome": "USP Como",
-  "url": "https://como.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/",
-  "stato": "irraggiungibile",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": []
+  "url": "https://www.mim.gov.it/web/como/interpelli-ricerca-supplenti/",
+  "stato": "ok",
+  "avvisi": 200,
+  "dettaglio": ""
  },
  {
   "regione": "Lombardia",

@@ -1,26 +1,14 @@
-# Rapporto sulle fonti (28/10/2026 22:35)
+# Rapporto sulle fonti (28/10/2026 23:01)
 
-Fonti controllate: 68. Funzionano: 48. Da guardare: 20.
+Fonti controllate: 68. Funzionano: 52. Da guardare: 16.
 
 ## Da guardare
 
 ### USP Salerno (Campania) - irraggiungibile
 - Indirizzo attuale: https://uat-salerno.it/Documenti/CIRCOLARI/Interpelli-per-reclutamento-personale-docente
 
-### USP Frosinone (Lazio) - irraggiungibile
-- Indirizzo attuale: https://lnx.uspistruzione.fr.it/wp2/category/interpello-nazionale/feed/
-
 ### USP Latina (Lazio) - irraggiungibile
 - Indirizzo attuale: https://www.csalatina.it/category/interpelli/feed/
-
-### USP Bergamo (Lombardia) - irraggiungibile
-- Indirizzo attuale: https://bergamo.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/
-
-### USP Brescia (Lombardia) - irraggiungibile
-- Indirizzo attuale: https://brescia.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/
-
-### USP Como (Lombardia) - irraggiungibile
-- Indirizzo attuale: https://como.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/
 
 ### USP Milano (Lombardia) - irraggiungibile
 - Indirizzo attuale: https://milano.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/
@@ -134,12 +122,16 @@ Fonti controllate: 68. Funzionano: 48. Da guardare: 20.
 - USP Ravenna (Emilia-Romagna): 1 avvisi
 - USP Reggio Emilia (Emilia-Romagna): 2 avvisi
 - USP Rimini (Emilia-Romagna): 1 avvisi
+- USP Frosinone (Lazio): 13 avvisi
 - USP Roma (Lazio): 10 avvisi
 - USP Viterbo (Lazio): 165 avvisi
 - USP Genova (Liguria): 100 avvisi
 - USP Imperia (Liguria): 16 avvisi
 - USP La Spezia (Liguria): 26 avvisi
 - USP Savona (Liguria): 27 avvisi
+- USP Bergamo (Lombardia): 201 avvisi
+- USP Brescia (Lombardia): 200 avvisi
+- USP Como (Lombardia): 200 avvisi
 - USP Cremona (Lombardia): 201 avvisi
 - USP Lodi (Lombardia): 1 avvisi
 - USP Mantova (Lombardia): 3 avvisi
