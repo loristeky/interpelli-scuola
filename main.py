@@ -739,6 +739,37 @@ def enrich_from_doc(info):
     return info
 
 
+# Elenco già pronto: l'automazione su GitHub legge le fonti ogni 30 minuti e pubblica interpelli.json (ramo «dati»).
+# Scaricare quel file è molto più veloce che leggere decine di siti, e funziona anche quando l'app è chiusa.
+SHARED_URL = "https://raw.githubusercontent.com/loristeky/interpelli-scuola/dati/interpelli.json"
+INSERT_SQL = """INSERT INTO interpelli (title, url, region, source, target, published, deadline, cdc, post_type, doc_url, email)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(url) DO UPDATE SET title=excluded.title, target=excluded.target,
+                published=excluded.published, deadline=COALESCE(excluded.deadline, interpelli.deadline),
+                post_type=excluded.post_type, doc_url=excluded.doc_url,
+                email=CASE WHEN excluded.email != '' THEN excluded.email ELSE interpelli.email END"""
+
+
+def load_shared(conn, known):
+    """Scarica l'elenco pronto e lo salva. Restituisce la lista degli avvisi NUOVI (righe), o None se non disponibile."""
+    try:
+        data = json.loads(fetch_bytes(SHARED_URL, 8_000_000).decode("utf-8"))
+        rows = [r for r in data.get("righe", []) if isinstance(r, list) and len(r) == 11 and isinstance(r[1], str)]
+    except Exception:
+        return None
+    new = []
+    for r in rows:
+        try:
+            conn.execute(INSERT_SQL, [x if x is not None else None for x in r])
+            if r[1] not in known:
+                new.append(r)
+            known.add(r[1])
+        except sqlite3.Error:
+            pass
+    conn.commit()
+    return new
+
+
 def recheck_deadlines(conn, tried, limit=40):
     """Riprova a trovare la scadenza (e la mail) degli avvisi già salvati che non l'hanno, leggendo l'allegato.
     `tried` = indirizzi già provati (non si riprova all'infinito). Restituisce quante scadenze ha trovato."""
@@ -1346,7 +1377,7 @@ def build(page: ft.Page, raw_prefs=None):
         # ---- Preferenze dell'utente (classi di concorso, dati per le candidature)
         prefs = {"classes": [], "name": "", "phone": "", "gps_class": "", "gps_score": "",
                  "fav": [], "applied": [], "profiles": [], "theme": "", "calc": {},
-                 "sources": [], "src_status": {}, "deep": True, "dl_tried": []}
+                 "sources": [], "src_status": {}, "deep": True, "dl_tried": [], "shared": True}
 
         store = ft.SharedPreferences()
 
@@ -1390,6 +1421,8 @@ def build(page: ft.Page, raw_prefs=None):
                         prefs["dl_tried"] = [u for u in data["dl_tried"] if isinstance(u, str)][-600:]
                     if isinstance(data.get("deep"), bool):
                         prefs["deep"] = data["deep"]
+                    if isinstance(data.get("shared"), bool):
+                        prefs["shared"] = data["shared"]
                     if data.get("theme") in ("light", "dark"):
                         prefs["theme"] = data["theme"]
                     for key in ("name", "phone", "gps_class", "gps_score"):
@@ -3036,6 +3069,16 @@ def build(page: ft.Page, raw_prefs=None):
                     init_db()
                     known = known_urls()
                     conn = db_connect()
+                    shared_ok = False
+                    if not region and prefs.get("shared", True):
+                        status_text.value = "Scarico l'elenco già pronto…"
+                        page.update()
+                        got = load_shared(conn, known)
+                        if got is not None:
+                            shared_ok = True
+                            new_count += len(got)
+                            mine_count += sum(1 for r in got if matches_classes(r[0], r[7], prefs["classes"]))
+                            load_results(reset=False, live=True)
 
                     target_sources = {region: SOURCES[region]} if region and region in SOURCES else SOURCES
                     tasks_info = []
@@ -3047,7 +3090,7 @@ def build(page: ft.Page, raw_prefs=None):
                                 tasks_info.append((reg, source_name, get_page_url(base_url, p)))
 
                     tasks_info = [(r, n, u, False) for r, n, u in tasks_info]
-                    if prefs.get("deep", True):
+                    if prefs.get("deep", True) and not shared_ok:      # con l'elenco pronto le pagine extra sono già lette
                         tasks_info += [(r, n, u, True) for r, n, u in deep_pages(target_sources.items())]
                     if not region or region == "Altre fonti":
                         for custom in prefs["sources"]:
@@ -3306,6 +3349,12 @@ def build(page: ft.Page, raw_prefs=None):
             prefs["deep"] = bool(sv_deep.value)
             save_prefs()
 
+        def set_shared(e=None):
+            prefs["shared"] = bool(sv_shared.value)
+            save_prefs()
+
+        sv_shared = ft.Switch(label="Usa l'elenco già pronto (più veloce)", value=prefs.get("shared", True),
+                              on_change=set_shared)
         sv_deep = ft.Switch(label="Cerca anche nel resto del sito di ogni ufficio", value=prefs.get("deep", True),
                             on_change=set_deep)
 
@@ -3425,6 +3474,10 @@ def build(page: ft.Page, raw_prefs=None):
             ft.Container(padding=ft.Padding.only(left=16, right=16, top=16, bottom=28), content=ft.Column(
                 spacing=14, controls=[
                     section_card([
+                        sv_shared,
+                        ft.Text("Scarica in un colpo l'elenco che l'automazione di GitHub aggiorna ogni 30 minuti, "
+                                "anche quando l'app è chiusa. Poi controlla da sola solo le fonti principali.",
+                                size=12, color=ft.Colors.ON_SURFACE_VARIANT),
                         sv_deep,
                         ft.Text("Oltre alle pagine degli interpelli, guarda la home, le notizie e le comunicazioni di "
                                 "ogni ufficio e tiene solo gli avvisi che parlano di interpelli. La ricerca dura un po' "
