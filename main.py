@@ -325,7 +325,9 @@ def parse_date(value, default_year=None):
 
 # --- scadenza -----------------------------------------------------------------
 _KEY = (r"(?:entro(?:\s+e\s+non\s+oltre)?|non\s+oltre|scadenz[ae]|termine(?:\s+ultimo)?|"
-        r"improrogabilmente|presentat[ae]\s+(?:dal\s+\S+\s+)?al)")
+        r"improrogabilmente|presentat[ae]\s+(?:dal\s+\S+\s+)?al|"
+        r"(?:fino|sino)\s+(?:al(?:le\s+ore\s+[\d:.,]+\s+d(?:el|i))?|alle\s+ore\s+[\d:.,]+\s+d(?:el|i))(?:\s+giorno)?|"
+        r"alle\s+ore\s+[\d:.,]+\s+d(?:el|i)(?:\s+giorno)?|pervenire\s+(?:al|il)|data\s+di\s+chiusura)")
 _NOSTOP = r"(?:(?!\.\s)(?!\n).)"            # niente fine-frase tra parola chiave e data
 DEADLINE_RE = re.compile(rf"({_KEY})({_NOSTOP}{{0,110}}?)({DATE_ANY})", re.I | re.S)
 APPLY_WORDS = re.compile(r"domand|candidatur|disponibilit|istanz|present|invia|trasmett|pervenir|"
@@ -359,6 +361,8 @@ def find_deadline(text, published=None):
             score += 2
         if re.match(r"(?i)entro|non\s+oltre|scadenz", key):
             score += 1
+        if re.search(r"(?i)\bore\b", key):
+            score += 2
         if CONTRACT_WORDS.search(before[-45:] + key + between[:25]) and not APPLY_WORDS.search(context):
             score -= 3
         if d.month in (6, 8) and d.day in (30, 31) and score < 4:
@@ -660,14 +664,116 @@ def analyze_page(page_html, link, rss_published=None):
     }
 
 
+def _open_bytes(url, limit, context=None):
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36"})
+    with urlopen(req, timeout=10, context=context) as resp:
+        return resp.read(limit)
+
+
+def fetch_bytes(url, limit=3_000_000):
+    """Scarica un file (stesso criterio di fetch_url per i certificati incompleti)."""
+    try:
+        return _open_bytes(url, limit, ssl.create_default_context())
+    except Exception as ex:
+        reason = getattr(ex, "reason", ex)
+        if isinstance(reason, ssl.SSLError) or "CERTIFICATE" in str(ex).upper():
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            return _open_bytes(url, limit, ctx)
+        raise
+
+
+def doc_text(url, max_chars=6000):
+    """Testo dell'allegato (PDF o Word) per cercare scadenza ed email che non stanno nella pagina. '' se non si legge.
+    I PDF si leggono con pypdf se è disponibile; i file .docx con la sola libreria standard."""
+    low = url.lower().split("?")[0]
+    try:
+        if low.endswith(".pdf"):
+            try:
+                from pypdf import PdfReader
+            except Exception:
+                return ""
+            import io
+            reader = PdfReader(io.BytesIO(fetch_bytes(url)))
+            out = []
+            for page in reader.pages[:3]:
+                out.append(page.extract_text() or "")
+                if sum(len(x) for x in out) > max_chars:
+                    break
+            return re.sub(r"\s+", " ", " ".join(out))[:max_chars]
+        if low.endswith(".docx"):
+            import io
+            import zipfile
+            with zipfile.ZipFile(io.BytesIO(fetch_bytes(url))) as z:
+                xml = z.read("word/document.xml").decode("utf-8", "replace")
+            xml = re.sub(r"</w:p>", "\n", xml)
+            return clean_text(re.sub(r"<[^>]+>", "", xml))[:max_chars]
+    except Exception:
+        return ""
+    return ""
+
+
+def enrich_from_doc(info):
+    """Se la pagina non dice la scadenza (o l'email), la cerca nell'allegato."""
+    try:
+        if info is None or not info.get("doc_url"):
+            return info
+        if info.get("deadline") and info.get("email"):
+            return info
+        txt = doc_text(info["doc_url"])
+        if not txt:
+            return info
+        if not info.get("deadline"):
+            dl, src = find_deadline(txt, info.get("published") or None)
+            if dl:
+                info["deadline"], info["deadline_src"] = dl, "allegato"
+        if not info.get("email"):
+            info["email"] = extract_email(txt)
+        if len(info.get("text", "")) < 200:
+            info["text"] = (info.get("text", "") + " " + txt[:3000]).strip()
+            info["post_type"] = analyze_post_content(info["text"]) if info.get("post_type") in (
+                "Non specificato", "Posto Ordinario / Altro") else info["post_type"]
+    except Exception:
+        pass
+    return info
+
+
+def recheck_deadlines(conn, tried, limit=40):
+    """Riprova a trovare la scadenza (e la mail) degli avvisi già salvati che non l'hanno, leggendo l'allegato.
+    `tried` = indirizzi già provati (non si riprova all'infinito). Restituisce quante scadenze ha trovato."""
+    rows = conn.execute(
+        "SELECT url, doc_url, published, email FROM interpelli "
+        "WHERE (deadline IS NULL OR deadline = '') AND doc_url IS NOT NULL AND doc_url != '' "
+        "AND (published = '' OR published >= date('now', '-45 day')) ORDER BY published DESC LIMIT ?",
+        (limit * 3,)).fetchall()
+    todo = [r for r in rows if r[0] not in tried][:limit]
+    found = 0
+
+    def work(r):
+        info = {"doc_url": r[1], "published": r[2] or "", "email": r[3] or "", "deadline": None, "text": ""}
+        return r[0], enrich_from_doc(info)
+
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for url, info in ex.map(work, todo):
+            tried.add(url)
+            if info and (info.get("deadline") or info.get("email")):
+                conn.execute("UPDATE interpelli SET deadline = COALESCE(?, deadline), "
+                             "email = CASE WHEN email IS NULL OR email = '' THEN ? ELSE email END WHERE url = ?",
+                             (info.get("deadline"), info.get("email") or "", url))
+                found += 1 if info.get("deadline") else 0
+    conn.commit()
+    return found
+
+
 def fetch_page_details(link, rss_published=None):
     """Come analyze_page ma scaricando la pagina; None se non raggiungibile."""
     if FILE_EXT_RE.search(link):
-        return {"text": "", "post_type": "Non specificato", "published": rss_published or "",
-                "published_src": "elenco dell'ufficio" if rss_published else "", "deadline": None,
-                "deadline_src": "", "doc_url": link, "email": ""}
+        return enrich_from_doc({"text": "", "post_type": "Non specificato", "published": rss_published or "",
+                                "published_src": "elenco dell'ufficio" if rss_published else "", "deadline": None,
+                                "deadline_src": "", "doc_url": link, "email": ""})
     try:
-        return analyze_page(fetch_url(link), link, rss_published)
+        return enrich_from_doc(analyze_page(fetch_url(link), link, rss_published))
     except Exception:
         return None
 
@@ -1027,6 +1133,71 @@ def gps_threshold(entry, riserva=0.0, totals=None):
     return float(best[0]), int(best[1]), n, escluse, minima, rilevata
 
 
+SCHOOL_RE = re.compile(
+    r"\b((?:I\.?\s?C\.?|I\.?I\.?S\.?S?\.?|I\.?P\.?S\.?E?\.?O?\.?A?\.?|I\.?T\.?[CIG]\.?|I\.?T\.?E\.?|CPIA|ISIS|IPSIA|IPSSAR|"
+    r"Liceo|Istituto|Circolo|Direzione\s+Didattica|D\.?D\.?|Convitto)\b[^,;:()\n]{3,70})", re.I)
+
+
+def school_of(title):
+    """Nome della scuola dal titolo di un interpello (meglio possibile), o None."""
+    m = SCHOOL_RE.search((title or "").replace("“", " ").replace("”", " ").replace('"', " "))
+    if not m:
+        return None
+    name = re.split(r"\s[-–—]\s|\s+(?:prot|interpell\w*|avviso|del|n\.|per|posto|posti|cdc|classe|cl\.|a\.s|di\s+tipo)\b|\s+\d",
+                    m.group(1), 1, flags=re.I)[0]
+    name = re.sub(r"\s+", " ", name).strip(" .-–")
+    return name.upper()[:50] if len(name) >= 5 else None
+
+
+def storico_stats(rows, classes=None):
+    """rows: [(titolo, ufficio, data 'YYYY-MM-DD', classi)]. Con `classes` tiene solo gli interpelli di quelle classi.
+    Restituisce {"totale", "mesi": [(YYYY-MM, n)], "classi": [(cdc, n)], "scuole": [(nome, n)], "uffici": [(nome, n)]}."""
+    from collections import Counter
+    mesi, cl, scuole, uffici = Counter(), Counter(), Counter(), Counter()
+    tot = 0
+    for title, source, published, cdc in rows:
+        if classes and not matches_classes(title, cdc, classes):
+            continue
+        tot += 1
+        if published and len(published) >= 7:
+            mesi[published[:7]] += 1
+        for c in [x.strip() for x in (cdc or "").split(",") if x.strip()]:
+            cl[c] += 1
+        sc = school_of(title)
+        if sc:
+            scuole[sc] += 1
+        if source:
+            uffici[source] += 1
+    return {"totale": tot, "mesi": sorted(mesi.items()), "classi": cl.most_common(12),
+            "scuole": scuole.most_common(10), "uffici": uffici.most_common(15)}
+
+
+def gps_turn_thresholds(entry, riserva=0.0, totals=None):
+    """[(turno, soglia, minima)] per ogni bollettino: soglia = punteggio dell'ultimo nominato di quel turno (tolta la
+    quota riservata), minima = ultimo nominato in assoluto del turno. In ordine di turno."""
+    turns = entry.get("t") or ([{"b": "1", "s": entry["s"]}] if entry.get("s") else [])
+    pct = int(round(riserva * 100))
+    out = []
+    for t in turns:
+        ordered = sorted(t.get("s") or [], key=lambda x: (-x[0], x[1]))
+        if not ordered:
+            continue
+        total = (totals or {}).get(t.get("b"), len(ordered))
+        quota = min(total * pct // 100, len(ordered) - 1) if riserva > 0 else 0
+        cut, by_pos = gps_reserved_tail(ordered, quota) if riserva > 0 else (None, ordered)
+        kept = sorted(by_pos[:cut], key=lambda x: (-x[0], x[1])) if cut is not None else ordered[:len(ordered) - quota]
+        out.append((str(t.get("b")), float(kept[-1][0]), float(ordered[-1][0])))
+    out.sort(key=lambda x: int(x[0]) if x[0].isdigit() else 99)
+    return out
+
+
+def gps_turn_outlook(thresholds, score):
+    """(primo turno in cui il punteggio basta, primo turno in cui basta solo senza riserva, turni letti)."""
+    si = next((b for b, soglia, _m in thresholds if score >= soglia), None)
+    forse = next((b for b, _s, minima in thresholds if score >= minima), None)
+    return si, forse, len(thresholds)
+
+
 def gps_rank(data, cdc, fascia, score, region="", riserva=0.0, tipo="GPS"):
     """Confronta il punteggio con quello dell'ultimo nominato di ogni provincia.
     esito: "si" (ci saresti anche con la riserva piena), "forse" (dipende da quanti riservisti sono entrati),
@@ -1054,10 +1225,13 @@ def gps_rank(data, cdc, fascia, score, region="", riserva=0.0, tipo="GPS"):
         margin = round(score - soglia, 3)
         esito = "si" if margin >= 0 else ("forse" if score >= minima else "no")
         turni = [(t.get("b"), min(sc for sc, _ in t["s"])) for t in entry.get("t", []) if t.get("s")]
+        soglie = gps_turn_thresholds(entry, riserva, totals)
+        turno_si, turno_forse, n_turni = gps_turn_outlook(soglie, score)
         rows.append({"provincia": prov, "regione": reg, "soglia": soglia, "minima": minima, "turni": turni, "chiamati": chiamati,
                      "massimo": float(entry["max"]), "nomine": n, "escluse": escluse, "ultima": ultima, "rilevata": rilevata,
                      "margine": margin, "mancano": round(max(0.0, minima - score), 3),
-                     "esito": esito, "ok": esito == "si"})
+                     "esito": esito, "ok": esito == "si", "soglie": soglie,
+                     "turno_si": turno_si, "turno_forse": turno_forse, "n_turni": n_turni})
     order = {"si": 0, "forse": 1, "no": 2}
     rows.sort(key=lambda r: (order[r["esito"]], -r["margine"], -r["nomine"], r["provincia"]))
     return rows
@@ -1172,7 +1346,7 @@ def build(page: ft.Page, raw_prefs=None):
         # ---- Preferenze dell'utente (classi di concorso, dati per le candidature)
         prefs = {"classes": [], "name": "", "phone": "", "gps_class": "", "gps_score": "",
                  "fav": [], "applied": [], "profiles": [], "theme": "", "calc": {},
-                 "sources": [], "src_status": {}, "deep": True}
+                 "sources": [], "src_status": {}, "deep": True, "dl_tried": []}
 
         store = ft.SharedPreferences()
 
@@ -1212,6 +1386,8 @@ def build(page: ft.Page, raw_prefs=None):
                     if isinstance(data.get("src_status"), dict):
                         prefs["src_status"] = {k: v for k, v in data["src_status"].items()
                                                if isinstance(k, str) and isinstance(v, dict)}
+                    if isinstance(data.get("dl_tried"), list):
+                        prefs["dl_tried"] = [u for u in data["dl_tried"] if isinstance(u, str)][-600:]
                     if isinstance(data.get("deep"), bool):
                         prefs["deep"] = data["deep"]
                     if data.get("theme") in ("light", "dark"):
@@ -2297,6 +2473,19 @@ def build(page: ft.Page, raw_prefs=None):
                 ]),
             )
 
+        def outlook_text(r, score):
+            """«Con X punti: nominato dal turno N» in base ai bollettini già usciti."""
+            n = r.get("n_turni", 0)
+            if not n:
+                return ""
+            if r.get("turno_si"):
+                t = r["turno_si"]
+                return (f"Con {fmt_score(score)} punti eri già nominabile al turno {t}" if t == r["soglie"][0][0]
+                        else f"Con {fmt_score(score)} punti la nomina arriva dal turno {t} (letti {n} turni)")
+            if r.get("turno_forse"):
+                return f"Dal turno {r['turno_forse']} forse, a seconda dei riservisti (letti {n} turni)"
+            return f"Finora nessun turno arriva a {fmt_score(score)} punti (letti {n} turni): serve aspettare i prossimi"
+
         def gps_row(i, r, score):
             if r["esito"] == "si":
                 color, verdict, icon = GREEN, f"Ci saresti · +{fmt_score(r['margine'])} punti", ft.Icons.CHECK_CIRCLE_ROUNDED
@@ -2335,6 +2524,7 @@ def build(page: ft.Page, raw_prefs=None):
                                    + ("(riservisti riconosciuti dal salto di posizione)" if r.get("rilevata")
                                       else "(dai punteggi più bassi)"), size=11.5,
                                    color=ft.Colors.ON_SURFACE_VARIANT)] if r.get("escluse") else []),
+                        ft.Text(outlook_text(r, score), size=12, weight=ft.FontWeight.W_700, color=color),
                         *([ft.Text("Per turno, ultimo nominato: " + " → ".join(
                             f"{b}° {fmt_score(v)}" for b, v in r["turni"]), size=11.5,
                             color=ft.Colors.ON_SURFACE_VARIANT)] if len(r.get("turni", [])) > 1 else []),
@@ -2388,6 +2578,7 @@ def build(page: ft.Page, raw_prefs=None):
                     gps_state["text"] = (f"GPS {cls}, {GPS_FASCE.get(fascia, '')}, {fmt_score(num)} punti:\n" + "\n".join(
                         f"• {r['provincia']}: " + {"si": "ci saresti", "forse": "forse",
                                                    "no": "troppo alto"}[r["esito"]]
+                        + (f" (dal turno {r['turno_si']})" if r.get("turno_si") else "")
                         + f" (ultimo nominato {fmt_score(r['soglia'])})" for r in rows[:30]))
                     gps_share_row.visible = True
                     opts = [ft.DropdownOption(key="", text="—")] + [
@@ -2911,6 +3102,14 @@ def build(page: ft.Page, raw_prefs=None):
                                 status_text.value = f"Analizzo le fonti… {completed}/{total} · {new_count} nuovi"
                                 page.update()
                     conn.commit()
+                    try:                      # avvisi già salvati senza scadenza: la cerca negli allegati
+                        status_text.value = "Cerco le scadenze negli allegati…"
+                        page.update()
+                        tried = set(prefs["dl_tried"])
+                        recheck_deadlines(conn, tried)
+                        prefs["dl_tried"] = list(tried)[-600:]
+                    except Exception as ex:
+                        print(f"Scadenze dagli allegati: {ex}")
                     conn.close()
                 except Exception as ex:
                     print(f"Errore scraping: {ex}")
@@ -3256,6 +3455,127 @@ def build(page: ft.Page, raw_prefs=None):
             except Exception:
                 pass
 
+        # ---- Storico: quanti interpelli, per quali classi e dove --------------------------
+        st_office = ft.Dropdown(label="Ufficio / provincia", value="", border_radius=14,
+                                options=[ft.DropdownOption(key="", text="Tutti gli uffici")])
+        st_class = ft.TextField(label="Classe di concorso (facoltativa)", hint_text="es. A028, ADSS", border_radius=14,
+                                capitalization=ft.TextCapitalization.CHARACTERS, prefix_icon=ft.Icons.SCHOOL_ROUNDED)
+        st_summary = ft.Text("", size=13, weight=ft.FontWeight.W_700, color=ft.Colors.WHITE)
+        st_out = ft.Column(spacing=14)
+
+        def st_bars(title, items, color=BRAND_LIGHT, label=lambda k: k, hint=""):
+            if not items:
+                return None
+            top = max(n for _k, n in items) or 1
+            rows = [ft.Text(title, size=14, weight=ft.FontWeight.W_700)]
+            if hint:
+                rows.append(ft.Text(hint, size=11.5, color=ft.Colors.ON_SURFACE_VARIANT))
+            for k, n in items:
+                rows.append(ft.Column(spacing=2, controls=[
+                    ft.Row(controls=[ft.Text(label(k), size=12.5, expand=True), ft.Text(str(n), size=12.5,
+                                                                                         weight=ft.FontWeight.W_700)]),
+                    ft.ProgressBar(value=n / top, color=color, bgcolor=ft.Colors.with_opacity(0.15, color),
+                                   bar_height=6, border_radius=3)]))
+            return section_card(rows)
+
+        def month_label(k):
+            try:
+                return f"{MESI[int(k[5:7]) - 1].capitalize()} {k[:4]}"
+            except Exception:
+                return k
+
+        def paint_storico(e=None):
+            classes = parse_classes(st_class.value)
+            office = st_office.value or ""
+            conn = db_connect()
+            q = "SELECT title, source, published, cdc FROM interpelli WHERE target = 'DOCENTI'"
+            params = []
+            if office:
+                q += " AND source = ?"
+                params.append(office)
+            rows = conn.execute(q, params).fetchall()
+            conn.close()
+            st = storico_stats(rows, classes)
+            st_out.controls = []
+            if not st["totale"]:
+                st_summary.value = ""
+                st_out.controls = [section_card([ft.Text(
+                    "Nessun interpello trovato con questi filtri. Lo storico si riempie con gli avvisi che l'app "
+                    "scarica: aggiorna la ricerca dalla pagina principale e riprova.", size=13)])]
+                page.update()
+                return
+            first = st["mesi"][0][0] if st["mesi"] else ""
+            st_summary.value = (f"{st['totale']} interpelli"
+                                + (f" · da {month_label(first)}" if first else "")
+                                + (f" · {', '.join(classes)}" if classes else ""))
+            blocks = [
+                st_bars("Per mese", st["mesi"], label=month_label,
+                        hint="Quanti interpelli sono stati pubblicati ogni mese."),
+                st_bars("Per classe di concorso", st["classi"], "#7048E8",
+                        hint="Le classi con più interpelli: dove la graduatoria si esaurisce più spesso."),
+            ]
+            if not office:
+                blocks.append(st_bars(
+                    "Dove ce ne sono di più", st["uffici"], GREEN,
+                    label=lambda k: re.sub(r"^(USP|AT)\s+", "", k, flags=re.I),
+                    hint="Più interpelli di solito vuol dire che dopo le GPS restano posti da coprire"
+                         + (" per le tue classi." if classes else ".")))
+            blocks.append(st_bars("Scuole che ne pubblicano di più", st["scuole"], "#E8590C",
+                                  hint="Riconosciute dal titolo dell'avviso: possono mancarne alcune."))
+            st_out.controls = [b for b in blocks if b]
+            page.update()
+
+        def close_storico(e=None):
+            storico_view.visible = False
+            home_view.visible = True
+            page.update()
+
+        def open_storico(e=None):
+            try:
+                conn = db_connect()
+                offices = [r[0] for r in conn.execute(
+                    "SELECT DISTINCT source FROM interpelli WHERE target = 'DOCENTI' ORDER BY source").fetchall() if r[0]]
+                conn.close()
+            except Exception:
+                offices = []
+            st_office.options = [ft.DropdownOption(key="", text="Tutti gli uffici")] + [
+                ft.DropdownOption(key=o, text=o) for o in offices]
+            if not st_class.value and prefs["classes"]:
+                st_class.value = ", ".join(prefs["classes"])
+            hide_all_pages()
+            home_view.visible = False
+            storico_view.visible = True
+            paint_storico()
+
+        st_office.on_select = paint_storico
+        st_class.on_submit = paint_storico
+
+        storico_header = ft.Container(
+            gradient=ft.LinearGradient(begin=ft.Alignment.TOP_LEFT, end=ft.Alignment.BOTTOM_RIGHT,
+                                       colors=[BRAND_DARK, BRAND_LIGHT]),
+            padding=ft.Padding.only(left=6, right=18, top=18, bottom=18),
+            border_radius=ft.BorderRadius.only(bottom_left=28, bottom_right=28),
+            content=ft.Column(spacing=4, controls=[
+                ft.Row(vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=4, controls=[
+                    ft.IconButton(icon=ft.Icons.ARROW_BACK_ROUNDED, icon_color=ft.Colors.WHITE, icon_size=26,
+                                  tooltip="Indietro", on_click=close_storico),
+                    ft.Column(expand=True, spacing=0, controls=[
+                        ft.Text("Storico interpelli", size=20, weight=ft.FontWeight.W_800, color=ft.Colors.WHITE),
+                        ft.Text("Quanti interpelli e per quali classi, per ufficio", size=12,
+                                color=ft.Colors.with_opacity(0.88, ft.Colors.WHITE))])]),
+                ft.Container(padding=ft.Padding.only(left=16), content=st_summary)]))
+        storico_body = ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, controls=[
+            ft.Container(padding=ft.Padding.only(left=16, right=16, top=16, bottom=28), content=ft.Column(
+                spacing=14, controls=[
+                    section_card([
+                        ft.Text("Per capire dove conviene stare in graduatoria. Lo storico parte dai primi avvisi "
+                                "scaricati dall'app, quindi cresce col tempo.", size=12,
+                                color=ft.Colors.ON_SURFACE_VARIANT),
+                        st_office, st_class,
+                        ft.FilledTonalButton(content="Mostra", icon=ft.Icons.INSIGHTS_ROUNDED, on_click=paint_storico)]),
+                    st_out]))])
+        storico_view = ft.Column(expand=True, spacing=0, visible=False, controls=[storico_header, storico_body])
+
         # ---- Menù: tutte le funzioni in una pagina ---------------------------------------
         info_dlg = ft.AlertDialog(
             title=ft.Text("Informazioni"),
@@ -3281,7 +3601,7 @@ def build(page: ft.Page, raw_prefs=None):
             page.update()
 
         def hide_all_pages():
-            for v in (gps_view, calc_view, radar_view, sources_view, menu_view):
+            for v in (gps_view, calc_view, radar_view, sources_view, menu_view, storico_view):
                 v.visible = False
 
         def open_menu(e=None):
@@ -3359,6 +3679,10 @@ def build(page: ft.Page, raw_prefs=None):
                                   lambda e: open_menu_item(open_gps)),
                         menu_tile(ft.Icons.CALCULATE_ROUNDED, "Calcola punteggio", "Titoli, servizio, certificazioni",
                                   lambda e: open_menu_item(lambda: open_calc(from_home=True)))]),
+                    ft.Row(spacing=12, controls=[
+                        menu_tile(ft.Icons.INSIGHTS_ROUNDED, "Storico interpelli", "Quanti e per quali classi, per ufficio",
+                                  lambda e: open_menu_item(open_storico), "#7048E8"),
+                        ft.Container(expand=True)]),
                     menu_label("APP"),
                     ft.Row(spacing=12, controls=[
                         menu_tile(ft.Icons.TUNE_ROUNDED, "Le mie classi", "Classi, nome per le candidature",
@@ -3375,6 +3699,9 @@ def build(page: ft.Page, raw_prefs=None):
         _go_back_sources = go_back
 
         def go_back(e=None):
+            if storico_view.visible:
+                close_storico()
+                return True
             if menu_view.visible:
                 close_menu()
                 return True
@@ -3396,7 +3723,7 @@ def build(page: ft.Page, raw_prefs=None):
                         size=10.5, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
             ]),
         )
-        page.add(home_view, gps_view, calc_view, radar_view, sources_view, menu_view, disclaimer)
+        page.add(home_view, gps_view, calc_view, radar_view, sources_view, menu_view, storico_view, disclaimer)
         load_results(reset=True)
 
         # Primo avvio: se non c'è ancora nulla, scarica subito.
