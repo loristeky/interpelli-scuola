@@ -63,7 +63,7 @@ SOURCES = {
     ],
     "Lazio": [
         ("USP Frosinone", "https://www.uspistruzione.fr.it/wp2/tag/interpello-nazionale/", 1),
-        ("USP Latina", "https://www.csalatina.it/category/interpelli/feed/", 1),
+        ("USP Latina", "https://www.csalatina.it/interpelli/", 1),
         ("USP Roma", "https://www.atpromaistruzione.it/atp/category/reclutamento/interpelli-personale-docente/feed/", 1),
         ("USP Viterbo", "http://www.provveditoratostudiviterbo.it/DOCENTI/interpelli/INTERPELLIDOC.htm", 1)
     ],
@@ -74,7 +74,7 @@ SOURCES = {
         ("USP Savona", "https://servizi.istruzioneliguria.gov.it/provincia.php?p=SV", 1)
     ],
     "Lombardia": [
-        ("USP Milano", "https://milano.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/", 1),
+        ("USP Milano", "https://www.mim.gov.it/web/milano/interpelli-ricerca-supplenti", 1),
         ("USP Brescia", "https://www.mim.gov.it/web/brescia/interpelli-ricerca-supplenti/", 1),
         ("USP Bergamo", "https://www.mim.gov.it/web/bergamo/interpelli-ricerca-supplenti/", 1),
         ("USP Como", "https://www.mim.gov.it/web/como/interpelli-ricerca-supplenti/", 1),
@@ -83,7 +83,7 @@ SOURCES = {
         ("USP Lodi", "https://www.mim.gov.it/web/lodi/interpelli-ricerca-supplenti", 1),
         ("USP Mantova", "https://www.mim.gov.it/web/mantova/interpelli-ricerca-supplenti", 1),
         ("USP Monza brianza", "https://www.mim.gov.it/web/monza-brianza/interpelli-ricerca-supplenti", 1),
-        ("USP Pavia", "https://pavia.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/", 1),
+        ("USP Pavia", "https://www.mim.gov.it/web/pavia/interpelli-ricerca-supplenti", 1),
         ("USP Sondrio", "https://www.mim.gov.it/web/sondrio/interpelli-ricerca-supplenti", 1),
         ("USP Varese", "https://varese.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/", 1)
     ],
