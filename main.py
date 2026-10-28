@@ -85,14 +85,14 @@ SOURCES = {
         ("USP Monza brianza", "https://www.mim.gov.it/web/monza-brianza/interpelli-ricerca-supplenti", 1),
         ("USP Pavia", "https://www.mim.gov.it/web/pavia/interpelli-ricerca-supplenti", 1),
         ("USP Sondrio", "https://www.mim.gov.it/web/sondrio/interpelli-ricerca-supplenti", 1),
-        ("USP Varese", "https://varese.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/", 1)
+        ("USP Varese", "https://www.mim.gov.it/web/varese/interpelli-ricerca-supplenti", 1)
     ],
     "Marche": [
         ("USP Ancona", "https://www.istruzione-ancona.it/category/docenti/feed/", 1),
         ("USP Pesaro Urbino", "http://www.usppesarourbino.it/category/interpelli/feed/", 1)
     ],
     "Molise": [
-        ("USP Campobasso", "https://www.uspcampobasso.it/category/interpelli/feed/", 1)
+        ("USP Campobasso", "https://www.mim.gov.it/web/campobasso/interpelli", 1)
     ],
     "Piemonte": [
         ("USP Torino", "https://www.istruzionepiemonte.it/torino/interpelli-supplenze/", PAGES_TO_FETCH),
