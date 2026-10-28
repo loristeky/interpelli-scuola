@@ -750,11 +750,19 @@ INSERT_SQL = """INSERT INTO interpelli (title, url, region, source, target, publ
                 email=CASE WHEN excluded.email != '' THEN excluded.email ELSE interpelli.email END"""
 
 
+SHARED_INFO = {"age_min": None}
+
+
 def load_shared(conn, known):
     """Scarica l'elenco pronto e lo salva. Restituisce la lista degli avvisi NUOVI (righe), o None se non disponibile."""
     try:
         data = json.loads(fetch_bytes(SHARED_URL, 8_000_000).decode("utf-8"))
         rows = [r for r in data.get("righe", []) if isinstance(r, list) and len(r) == 11 and isinstance(r[1], str)]
+        try:
+            ts = datetime.strptime(data.get("aggiornato", ""), "%Y-%m-%dT%H:%M:%SZ")
+            SHARED_INFO["age_min"] = (datetime.utcnow() - ts).total_seconds() / 60
+        except ValueError:
+            SHARED_INFO["age_min"] = None
     except Exception:
         return None
     new = []
@@ -2168,6 +2176,20 @@ def build(page: ft.Page, raw_prefs=None):
 
         load_lock = threading.RLock()
 
+        # Il diff di Flet può andare in errore («list index out of range») se un altro thread cambia la lista dei
+        # risultati proprio mentre la pagina si aggiorna (digitando nella ricerca mentre si carica). Tutti gli
+        # aggiornamenti passano dallo stesso lucchetto con cui load_results modifica la lista.
+        try:
+            _page_update = page.update
+
+            def _locked_update(*args, **kwargs):
+                with load_lock:
+                    return _page_update(*args, **kwargs)
+
+            page.update = _locked_update
+        except Exception:
+            pass
+
         def load_results(reset=True, live=False):
             """reset: riparte dall'inizio · live: ricarica quanto già mostrato (durante la ricerca) · altrimenti 'mostra altri'."""
             with load_lock:
@@ -3081,6 +3103,9 @@ def build(page: ft.Page, raw_prefs=None):
                             load_results(reset=False, live=True)
 
                     target_sources = {region: SOURCES[region]} if region and region in SOURCES else SOURCES
+                    # elenco pronto e recente (meno di 90 minuti): non serve rileggere le fonti, si risparmiano dati e tempo
+                    if shared_ok and (SHARED_INFO["age_min"] is not None and SHARED_INFO["age_min"] < 90):
+                        target_sources = {}
                     tasks_info = []
                     for reg, sources in target_sources.items():
                         for src_tuple in sources:
