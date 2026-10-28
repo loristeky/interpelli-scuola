@@ -62,7 +62,7 @@ SOURCES = {
         ("USP Rimini", "https://rn.istruzioneer.gov.it/category/personale-docente/interpelli-docenti-2026-2027/", 1)
     ],
     "Lazio": [
-        ("USP Frosinone", "https://lnx.uspistruzione.fr.it/wp2/category/interpello-nazionale/feed/", 1),
+        ("USP Frosinone", "https://www.uspistruzione.fr.it/wp2/tag/interpello-nazionale/", 1),
         ("USP Latina", "https://www.csalatina.it/category/interpelli/feed/", 1),
         ("USP Roma", "https://www.atpromaistruzione.it/atp/category/reclutamento/interpelli-personale-docente/feed/", 1),
         ("USP Viterbo", "http://www.provveditoratostudiviterbo.it/DOCENTI/interpelli/INTERPELLIDOC.htm", 1)
@@ -75,9 +75,9 @@ SOURCES = {
     ],
     "Lombardia": [
         ("USP Milano", "https://milano.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/", 1),
-        ("USP Brescia", "https://brescia.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/", 1),
-        ("USP Bergamo", "https://bergamo.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/", 1),
-        ("USP Como", "https://como.istruzionelombardia.gov.it/argomento/interpelli-ricerca-supplenti/", 1),
+        ("USP Brescia", "https://www.mim.gov.it/web/brescia/interpelli-ricerca-supplenti/", 1),
+        ("USP Bergamo", "https://www.mim.gov.it/web/bergamo/interpelli-ricerca-supplenti/", 1),
+        ("USP Como", "https://www.mim.gov.it/web/como/interpelli-ricerca-supplenti/", 1),
         ("USP Cremona", "https://www.mim.gov.it/web/cremona/interpelli-ricerca-supplenti", 1),
         ("USP Lecco", "https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti", 1),
         ("USP Lodi", "https://www.mim.gov.it/web/lodi/interpelli-ricerca-supplenti", 1),
