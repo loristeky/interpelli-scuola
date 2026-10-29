@@ -1,4 +1,4 @@
-# Rapporto sulle fonti (29/10/2026 10:03)
+# Rapporto sulle fonti (29/10/2026 11:04)
 
 Fonti controllate: 68. Funzionano: 64. Da guardare: 4.
 
@@ -61,7 +61,7 @@ Fonti controllate: 68. Funzionano: 64. Da guardare: 4.
 - USP Brescia (Lombardia): 200 avvisi
 - USP Como (Lombardia): 200 avvisi
 - USP Cremona (Lombardia): 201 avvisi
-- USP Lecco (Lombardia): 178 avvisi
+- USP Lecco (Lombardia): 180 avvisi
 - USP Lodi (Lombardia): 1 avvisi
 - USP Mantova (Lombardia): 3 avvisi
 - USP Milano (Lombardia): 1 avvisi
@@ -81,7 +81,7 @@ Fonti controllate: 68. Funzionano: 64. Da guardare: 4.
 - USP Taranto (Puglia): 17 avvisi
 - USP Sassari (Sardegna): 374 avvisi
 - USP Agrigento (Sicilia): 1 avvisi
-- USP Caltanissetta-Enna (Sicilia): 4 avvisi
+- USP Caltanissetta-Enna (Sicilia): 3 avvisi
 - USP Catania (Sicilia): 9 avvisi
 - USP Messina (Sicilia): 15 avvisi
 - USP Siracusa (Sicilia): 1 avvisi
@@ -95,3 +95,20 @@ Fonti controllate: 68. Funzionano: 64. Da guardare: 4.
 - USP Treviso (Veneto): 1 avvisi
 - USP Venezia (Veneto): 9 avvisi
 - USP Verona (Veneto): 2 avvisi
+
+### Diagnosi USP Bergamo
+- Pagina: https://www.mim.gov.it/web/bergamo/interpelli-ricerca-supplenti/
+- Pagina scaricata: 377468 caratteri
+- Collegamenti da avviso trovati: 201
+  - Interpelli ricerca supplenti -> https://www.mim.gov.it/web/bergamo/interpelli-ricerca-supplenti?p_p_id=1_WAR_miurmulticate
+  - Interpelli per il conferimento di supplenza personale docente n. 72 -> https://www.mim.gov.it/web/bergamo/-/interpelli-per-il-conferimento-di-supplenza-personale
+  - Interpelli per il conferimento di supplenza personale docente n. 71 -> https://www.mim.gov.it/web/bergamo/-/interpelli-per-il-conferimento-di-supplenza-personale
+  - Interpelli per il conferimento di supplenza personale docente n. 70 -> https://www.mim.gov.it/web/bergamo/-/interpelli-per-il-conferimento-di-supplenza-personale
+  - Interpelli per il conferimento di supplenza personale docente n. 69 -> https://www.mim.gov.it/web/bergamo/-/interpelli-per-il-conferimento-di-supplenza-personale
+  - Interpelli per il conferimento di supplenza personale docente n. 68 -> https://www.mim.gov.it/web/bergamo/-/interpelli-per-il-conferimento-di-supplenza-personale
+  - Interpelli per il conferimento di supplenza personale docente n. 67 -> https://www.mim.gov.it/web/bergamo/-/interpelli-per-il-conferimento-di-supplenza-personale
+  - Interpelli per il conferimento di supplenza personale docente n. 66 -> https://www.mim.gov.it/web/bergamo/-/interpelli-per-il-conferimento-di-supplenza-personale
+- Avvisi con numero: 200
+- Avviso più recente: Interpelli per il conferimento di supplenza personale docente n. 72 (91515 caratteri), allegati: 1
+  - https://www.mim.gov.it/documents/9081047/10244555/Interpelli+n.+72.pdf/541c9fbd-8772-fb66-6355-c4bca -> 0 righe lette
+
