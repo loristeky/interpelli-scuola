@@ -1,4 +1,4 @@
-# Rapporto sulle fonti (29/10/2026 11:37)
+# Rapporto sulle fonti (29/10/2026 12:11)
 
 Fonti controllate: 68. Funzionano: 64. Da guardare: 4.
 
@@ -53,9 +53,9 @@ Fonti controllate: 68. Funzionano: 64. Da guardare: 4.
 - USP Latina (Lazio): 75 avvisi
 - USP Roma (Lazio): 10 avvisi
 - USP Viterbo (Lazio): 165 avvisi
-- USP Genova (Liguria): 95 avvisi
+- USP Genova (Liguria): 96 avvisi
 - USP Imperia (Liguria): 14 avvisi
-- USP La Spezia (Liguria): 26 avvisi
+- USP La Spezia (Liguria): 25 avvisi
 - USP Savona (Liguria): 28 avvisi
 - USP Bergamo (Lombardia): 1 avvisi
 - USP Brescia (Lombardia): 200 avvisi
@@ -110,5 +110,5 @@ Fonti controllate: 68. Funzionano: 64. Da guardare: 4.
   - Interpelli per il conferimento di supplenza personale docente n. 66 -> https://www.mim.gov.it/web/bergamo/-/interpelli-per-il-conferimento-di-supplenza-personale
 - Avvisi con numero: 200
 - Avviso più recente: Interpelli per il conferimento di supplenza personale docente n. 72 (91561 caratteri), allegati: 1
-  - https://www.mim.gov.it/documents/9081047/10244555/Interpelli+n.+72.pdf/541c9fbd-8772-fb66-6355-c4bca -> 0 righe lette (pypdf NON installato; 217077 byte, inizia con b'%PDF-'; testo estratto: 0 caratteri)
+  - https://www.mim.gov.it/documents/9081047/10244555/Interpelli+n.+72.pdf/541c9fbd-8772-fb66-6355-c4bca -> 4 righe lette (pypdf ok; 217077 byte, inizia con b'%PDF-'; testo estratto: 1373 caratteri)
 
