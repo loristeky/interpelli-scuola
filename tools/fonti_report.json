@@ -92,69 +92,17 @@
   "regione": "Emilia-Romagna",
   "nome": "USP Ferrara",
   "url": "https://fe.istruzioneer.gov.it/category/interpelli_docenti/",
-  "stato": "vuota",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": [
-   [
-    "https://fe.istruzioneer.gov.it/pagine-tematiche/formazione-docenti-neo-assunti-e-anno-di-prova/",
-    "Formazione docenti neo-assunti e anno di prova"
-   ],
-   [
-    "https://fe.istruzioneer.gov.it/2026/10/28/interpello-per-una-supplenza-su-classe-di-concorso-adee-sostegno-primaria-12/",
-    "Interpello per una supplenza su classe di concorso ADEE – SOSTEGNO PRIMARIA"
-   ],
-   [
-    "https://fe.istruzioneer.gov.it/category/interpelli_docenti/",
-    "Interpelli docenti"
-   ],
-   [
-    "https://fe.istruzioneer.gov.it/tag/interpello-sostegnoprimaria-scuolaprimaria/",
-    "#interpello #sostegnoprimaria #scuolaprimaria"
-   ],
-   [
-    "https://fe.istruzioneer.gov.it/2026/10/28/interpello-per-una-supplenza-su-classe-di-concorso-adee-sostegno-primaria-11/",
-    "Interpello per una supplenza su classe di concorso ADEE – SOSTEGNO PRIMARIA"
-   ],
-   [
-    "https://fe.istruzioneer.gov.it/2026/10/27/interpello-per-supplenza-su-classe-di-concorso-aaaa-infanzia-posto-comune-47/",
-    "Interpello per supplenza su classe di concorso AAAA – INFANZIA POSTO COMUNE"
-   ]
-  ]
+  "stato": "ok",
+  "avvisi": 10,
+  "dettaglio": ""
  },
  {
   "regione": "Emilia-Romagna",
   "nome": "USP Modena",
   "url": "https://mo.istruzioneer.gov.it/category/interpelli-personale-docente-2026-27/",
-  "stato": "vuota",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": [
-   [
-    "https://mo.istruzioneer.gov.it/2026/10/28/interpello-ic-serramazzoni-scuola-infanzia-posto-sostegno/",
-    "INTERPELLO – IC SERRAMAZZONI SCUOLA INFANZIA POSTO SOSTEGNO"
-   ],
-   [
-    "https://mo.istruzioneer.gov.it/category/docenti-infanzia-e-primaria/",
-    "Docenti infanzia e primaria"
-   ],
-   [
-    "https://mo.istruzioneer.gov.it/category/interpelli-personale-docente-2026-27/",
-    "Interpelli personale docente 2026/27"
-   ],
-   [
-    "https://mo.istruzioneer.gov.it/category/reclutamento/",
-    "Reclutamento"
-   ],
-   [
-    "https://mo.istruzioneer.gov.it/tag/interpelli/",
-    "interpelli"
-   ],
-   [
-    "https://mo.istruzioneer.gov.it/tag/interpelli-personale-docente-26-27/",
-    "interpelli personale docente 26/27"
-   ]
-  ]
+  "stato": "ok",
+  "avvisi": 10,
+  "dettaglio": ""
  },
  {
   "regione": "Emilia-Romagna",
@@ -169,49 +117,23 @@
   "nome": "USP Reggio Emilia",
   "url": "https://re.istruzioneer.gov.it/category/docenti/feed/",
   "stato": "ok",
-  "avvisi": 2,
+  "avvisi": 1,
   "dettaglio": ""
  },
  {
   "regione": "Emilia-Romagna",
   "nome": "USP Forlì Cesena",
   "url": "https://fc.istruzioneer.gov.it/category/interpelli-a-s-2026-27/",
-  "stato": "vuota",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": [
-   [
-    "https://fc.istruzioneer.gov.it/pagine-tematiche/gps/",
-    "GPS"
-   ],
-   [
-    "https://fc.istruzioneer.gov.it/pagine-tematiche/formazione/",
-    "Formazione docenti"
-   ],
-   [
-    "https://fc.istruzioneer.gov.it/2026/10/28/interpello-nazionale-al-30-06-primaria-sostegno-h-20-i-c-savignano/",
-    "Interpello Nazionale al 30.06 – Primaria/Sostegno – h 20 – I.C. Savignano"
-   ],
-   [
-    "https://fc.istruzioneer.gov.it/category/interpelli-a-s-2026-27/",
-    "Interpelli a.s. 2026/27"
-   ],
-   [
-    "https://fc.istruzioneer.gov.it/2026/10/28/interpello-nazionale-al-30-06-infanzia-sostegno-h-21-i-c-savignano/",
-    "Interpello Nazionale al 30.06 – Infanzia/Sostegno – h 21 – I.C. Savignano"
-   ],
-   [
-    "https://fc.istruzioneer.gov.it/2026/10/28/interpello-supplenza-breve-infanzia-comune-h-25-c-d-cesenatico/",
-    "Interpello supplenza breve – Infanzia/Comune – h 25 – C.D. Cesenatico"
-   ]
-  ]
+  "stato": "ok",
+  "avvisi": 10,
+  "dettaglio": ""
  },
  {
   "regione": "Emilia-Romagna",
   "nome": "USP Piacenza",
   "url": "https://pc.istruzioneer.gov.it/interpelli/",
   "stato": "ok",
-  "avvisi": 180,
+  "avvisi": 83,
   "dettaglio": ""
  },
  {
@@ -285,7 +207,7 @@
   "nome": "USP Genova",
   "url": "https://servizi.istruzioneliguria.gov.it/provincia.php?p=GE",
   "stato": "ok",
-  "avvisi": 100,
+  "avvisi": 95,
   "dettaglio": ""
  },
  {
@@ -301,7 +223,7 @@
   "nome": "USP Imperia",
   "url": "https://servizi.istruzioneliguria.gov.it/provincia.php?p=IM",
   "stato": "ok",
-  "avvisi": 16,
+  "avvisi": 14,
   "dettaglio": ""
  },
  {
@@ -309,7 +231,7 @@
   "nome": "USP Savona",
   "url": "https://servizi.istruzioneliguria.gov.it/provincia.php?p=SV",
   "stato": "ok",
-  "avvisi": 27,
+  "avvisi": 28,
   "dettaglio": ""
  },
  {
@@ -333,7 +255,7 @@
   "nome": "USP Bergamo",
   "url": "https://www.mim.gov.it/web/bergamo/interpelli-ricerca-supplenti/",
   "stato": "ok",
-  "avvisi": 201,
+  "avvisi": 1,
   "dettaglio": ""
  },
  {
@@ -637,7 +559,7 @@
   "nome": "USP Lucca",
   "url": "https://www.ustlucca.it/feed/",
   "stato": "ok",
-  "avvisi": 9,
+  "avvisi": 10,
   "dettaglio": ""
  },
  {

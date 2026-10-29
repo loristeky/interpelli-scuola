@@ -1,6 +1,6 @@
-# Rapporto sulle fonti (28/10/2026 23:43)
+# Rapporto sulle fonti (29/10/2026 09:41)
 
-Fonti controllate: 68. Funzionano: 56. Da guardare: 12.
+Fonti controllate: 68. Funzionano: 59. Da guardare: 9.
 
 ## Da guardare
 
@@ -21,36 +21,6 @@ Fonti controllate: 68. Funzionano: 56. Da guardare: 12.
 
 ### USP Aosta (Valle d'Aosta) - irraggiungibile
 - Indirizzo attuale: https://www.scuole.vda.it/category/interpelli/feed/
-
-### USP Ferrara (Emilia-Romagna) - vuota
-- Indirizzo attuale: https://fe.istruzioneer.gov.it/category/interpelli_docenti/
-- La pagina si apre ma non ci trovo avvisi: forse è cambiata la struttura o è la pagina sbagliata.
-- Forse: [Formazione docenti neo-assunti e anno di prova](https://fe.istruzioneer.gov.it/pagine-tematiche/formazione-docenti-neo-assunti-e-anno-di-prova/)
-- Forse: [Interpello per una supplenza su classe di concorso ADEE – SOSTEGNO PRIMARIA](https://fe.istruzioneer.gov.it/2026/10/28/interpello-per-una-supplenza-su-classe-di-concorso-adee-sostegno-primaria-12/)
-- Forse: [Interpelli docenti](https://fe.istruzioneer.gov.it/category/interpelli_docenti/)
-- Forse: [#interpello #sostegnoprimaria #scuolaprimaria](https://fe.istruzioneer.gov.it/tag/interpello-sostegnoprimaria-scuolaprimaria/)
-- Forse: [Interpello per una supplenza su classe di concorso ADEE – SOSTEGNO PRIMARIA](https://fe.istruzioneer.gov.it/2026/10/28/interpello-per-una-supplenza-su-classe-di-concorso-adee-sostegno-primaria-11/)
-- Forse: [Interpello per supplenza su classe di concorso AAAA – INFANZIA POSTO COMUNE](https://fe.istruzioneer.gov.it/2026/10/27/interpello-per-supplenza-su-classe-di-concorso-aaaa-infanzia-posto-comune-47/)
-
-### USP Forlì Cesena (Emilia-Romagna) - vuota
-- Indirizzo attuale: https://fc.istruzioneer.gov.it/category/interpelli-a-s-2026-27/
-- La pagina si apre ma non ci trovo avvisi: forse è cambiata la struttura o è la pagina sbagliata.
-- Forse: [GPS](https://fc.istruzioneer.gov.it/pagine-tematiche/gps/)
-- Forse: [Formazione docenti](https://fc.istruzioneer.gov.it/pagine-tematiche/formazione/)
-- Forse: [Interpello Nazionale al 30.06 – Primaria/Sostegno – h 20 – I.C. Savignano](https://fc.istruzioneer.gov.it/2026/10/28/interpello-nazionale-al-30-06-primaria-sostegno-h-20-i-c-savignano/)
-- Forse: [Interpelli a.s. 2026/27](https://fc.istruzioneer.gov.it/category/interpelli-a-s-2026-27/)
-- Forse: [Interpello Nazionale al 30.06 – Infanzia/Sostegno – h 21 – I.C. Savignano](https://fc.istruzioneer.gov.it/2026/10/28/interpello-nazionale-al-30-06-infanzia-sostegno-h-21-i-c-savignano/)
-- Forse: [Interpello supplenza breve – Infanzia/Comune – h 25 – C.D. Cesenatico](https://fc.istruzioneer.gov.it/2026/10/28/interpello-supplenza-breve-infanzia-comune-h-25-c-d-cesenatico/)
-
-### USP Modena (Emilia-Romagna) - vuota
-- Indirizzo attuale: https://mo.istruzioneer.gov.it/category/interpelli-personale-docente-2026-27/
-- La pagina si apre ma non ci trovo avvisi: forse è cambiata la struttura o è la pagina sbagliata.
-- Forse: [INTERPELLO – IC SERRAMAZZONI SCUOLA INFANZIA POSTO SOSTEGNO](https://mo.istruzioneer.gov.it/2026/10/28/interpello-ic-serramazzoni-scuola-infanzia-posto-sostegno/)
-- Forse: [Docenti infanzia e primaria](https://mo.istruzioneer.gov.it/category/docenti-infanzia-e-primaria/)
-- Forse: [Interpelli personale docente 2026/27](https://mo.istruzioneer.gov.it/category/interpelli-personale-docente-2026-27/)
-- Forse: [Reclutamento](https://mo.istruzioneer.gov.it/category/reclutamento/)
-- Forse: [interpelli](https://mo.istruzioneer.gov.it/tag/interpelli/)
-- Forse: [interpelli personale docente 26/27](https://mo.istruzioneer.gov.it/tag/interpelli-personale-docente-26-27/)
 
 ### USP Latina (Lazio) - vuota
 - Indirizzo attuale: https://www.csalatina.it/interpelli/
@@ -104,19 +74,22 @@ Fonti controllate: 68. Funzionano: 56. Da guardare: 12.
 - USP Caserta (Campania): 1 avvisi
 - USP Napoli (Campania): 12 avvisi
 - USP Bologna (Emilia-Romagna): 5 avvisi
+- USP Ferrara (Emilia-Romagna): 10 avvisi
+- USP Forlì Cesena (Emilia-Romagna): 10 avvisi
+- USP Modena (Emilia-Romagna): 10 avvisi
 - USP Parma (Emilia-Romagna): 2 avvisi
-- USP Piacenza (Emilia-Romagna): 180 avvisi
+- USP Piacenza (Emilia-Romagna): 83 avvisi
 - USP Ravenna (Emilia-Romagna): 1 avvisi
-- USP Reggio Emilia (Emilia-Romagna): 2 avvisi
+- USP Reggio Emilia (Emilia-Romagna): 1 avvisi
 - USP Rimini (Emilia-Romagna): 1 avvisi
 - USP Frosinone (Lazio): 13 avvisi
 - USP Roma (Lazio): 10 avvisi
 - USP Viterbo (Lazio): 165 avvisi
-- USP Genova (Liguria): 100 avvisi
-- USP Imperia (Liguria): 16 avvisi
+- USP Genova (Liguria): 95 avvisi
+- USP Imperia (Liguria): 14 avvisi
 - USP La Spezia (Liguria): 26 avvisi
-- USP Savona (Liguria): 27 avvisi
-- USP Bergamo (Lombardia): 201 avvisi
+- USP Savona (Liguria): 28 avvisi
+- USP Bergamo (Lombardia): 1 avvisi
 - USP Brescia (Lombardia): 200 avvisi
 - USP Como (Lombardia): 200 avvisi
 - USP Cremona (Lombardia): 201 avvisi
@@ -143,7 +116,7 @@ Fonti controllate: 68. Funzionano: 56. Da guardare: 12.
 - USP Siracusa (Sicilia): 1 avvisi
 - USP Trapani (Sicilia): 10 avvisi
 - USP Firenze (Toscana): 2 avvisi
-- USP Lucca (Toscana): 9 avvisi
+- USP Lucca (Toscana): 10 avvisi
 - USP Perugia (Umbria): 1 avvisi
 - USP Padova (Veneto): 34 avvisi
 - USP Rovigo (Veneto): 10 avvisi
