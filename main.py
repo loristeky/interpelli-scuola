@@ -1036,6 +1036,56 @@ def digest_items(region, source_name, item, known):
     return out
 
 
+def _table_items(html_text, url):
+    """Siti che elencano gli avvisi in una tabella (es. Latina: id, data, ufficio, nome atto...): il titolo non è un
+    collegamento ma una cella, e il collegamento sta sul numero della riga. [(titolo, indirizzo, data)]."""
+    out = []
+    for row in re.findall(r"<tr\b.*?</tr>", html_text, re.I | re.S):
+        cells = [clean_text(c) for c in re.findall(r"<t[dh]\b[^>]*>(.*?)</t[dh]>", row, re.I | re.S)]
+        if len(cells) < 3:
+            continue
+        m = re.search(r'<a\b[^>]*href=["\']([^"\']+)["\']', row, re.I)
+        if not m or m.group(1).startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        cands = [c for c in cells if len(c) >= 10 and NOTICE_LINK_RE.search(c)]
+        if not cands:
+            continue
+        act = max(cands, key=len)
+        d_idx = next((i for i, c in enumerate(cells) if re.fullmatch(r"\d{4}-\d{2}-\d{2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{4}", c)), None)
+        school = cells[d_idx + 1] if d_idx is not None and d_idx + 1 < len(cells) and cells[d_idx + 1] != act else ""
+        when = cells[d_idx] if d_idx is not None else ""
+        title = f"{school} - {act}" if school and len(school) < 60 else act
+        out.append((title, urljoin(url, re.sub(r'&amp;', '&', m.group(1))), when))
+    return out
+
+
+DATED_DESC_RE = re.compile(r"^\s*(classe\s+di\s+concorso|cdc|posto|profilo|sostegno|interpell)", re.I)
+
+
+def _dated_list_items(html_text, url):
+    """Elenchi dove il titolo è solo il nome della scuola e sotto c'è la descrizione, per esempio (USP Lecco):
+        28 ottobre 2026 / «IC Civate» (collegamento) / «Classe di concorso ADEE».
+    Si tiene un collegamento solo se subito dopo c'è una descrizione di quel tipo. [(titolo, indirizzo, data)]."""
+    out = []
+    anchors = list(re.finditer(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html_text, re.I | re.S))
+    for i, m in enumerate(anchors):
+        href = m.group(1)
+        if href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        title = clean_text(m.group(2))
+        if not (3 <= len(title) <= 120):
+            continue
+        nxt = anchors[i + 1].start() if i + 1 < len(anchors) else len(html_text)
+        desc = clean_text(html_text[m.end():min(nxt, m.end() + 600)])
+        desc = re.split(r"\s\d{1,2}\s+[A-Za-zàù]+\s+\d{4}", desc, 1)[0].strip()[:120]      # la data seguente è già di un altro avviso
+        if not DATED_DESC_RE.match(desc):
+            continue
+        before = clean_text(html_text[max(0, m.start() - 400):m.start()])
+        dm = re.findall(r"\d{1,2}\s+[A-Za-zàù]+\s+\d{4}", before)
+        out.append((f"{title} - {desc}", urljoin(url, href.replace("&amp;", "&")), dm[-1] if dm else ""))
+    return out
+
+
 def parse_source_page(region, source_name, url, known, deep=False):
     """Scarica una pagina-fonte e restituisce (nuovi_interpelli, raggiungibile).
 
@@ -1073,6 +1123,10 @@ def parse_source_page(region, source_name, url, known, deep=False):
         for tag in ("nav", "footer", "aside"):
             light = re.sub(rf'<{tag}\b.*?</{tag}>', ' ', light, flags=re.I | re.S)
         items = _links_in(light, url)
+    if not items:
+        items = _table_items(html_content, url)
+    if not items:
+        items = _dated_list_items(strip_chrome(html_content), url)
     if not items and "<rss" not in lower_content and re.search(r"/(category|tag)/", url) and "feed" not in url:
         try:                                              # le categorie WordPress hanno quasi sempre un feed
             items = _feed_items(fetch_url(url.split("?")[0].rstrip("/") + "/feed/"))
