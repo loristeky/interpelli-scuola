@@ -96,8 +96,8 @@ SOURCES = {
     ],
     "Piemonte": [
         ("USP Torino", "https://www.istruzionepiemonte.it/torino/interpelli-supplenze/", PAGES_TO_FETCH),
-        ("USP Cuneo", "https://www.istruzionepiemonte.it/cuneo/category/interpelli/feed/", 1),
-        ("USP Novara", "https://www.istruzionepiemonte.it/novara/category/interpelli/feed/", 1)
+        ("USP Cuneo", "https://www.istruzionepiemonte.it/cuneo/interpelli-supplenze-personale-docente/", 1),
+        ("USP Novara", "https://www.istruzionepiemonte.it/novara/interpelli-supplenze/", 1)
     ],
     "Puglia": [
         ("USP Bari", "https://www.uspbari.it/usp/category/interpelli-della-provincia-di-bari", 1),
@@ -120,7 +120,7 @@ SOURCES = {
     "Toscana": [
         ("USP Firenze", "https://www.ust.fi.it/", 1),
         ("USP Lucca", "https://www.ustlucca.it/feed/", 1),
-        ("USP Pisa", "https://www.toscana-istruzione.it/atpisa/category/news/", 1)
+        ("USP Pisa", "https://www.usp-pi.it/category/interpelli/", 1)
     ],
     "Trentino-Alto Adige": [
         ("USP Trento", "https://www.vivoscuola.it/feed/", 1)
@@ -129,7 +129,7 @@ SOURCES = {
         ("USP Perugia", "https://istruzione.umbria.it/interpelli/interpelli-aperti/", 1)
     ],
     "Valle d'Aosta": [
-        ("USP Aosta", "https://www.scuole.vda.it/category/interpelli/feed/", 1)
+        ("USP Aosta", "https://scuole.vda.it/interpelli", 1)
     ],
     "Veneto": [
         ("USP Padova", "https://padova.istruzioneveneto.gov.it/category/interpelli-personale-docente/", 1),
