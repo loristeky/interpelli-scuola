@@ -164,27 +164,9 @@
   "regione": "Lazio",
   "nome": "USP Latina",
   "url": "https://www.csalatina.it/interpelli/",
-  "stato": "vuota",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": [
-   [
-    "https://www.csalatina.it/interpelli/",
-    "Home"
-   ],
-   [
-    "https://www.csalatina.it/interpelli/index.php?option=com_user&view=reset",
-    "Password dimenticata?"
-   ],
-   [
-    "https://www.csalatina.it/interpelli/index.php?option=com_user&view=remind",
-    "Nome utente dimenticato?"
-   ],
-   [
-    "https://www.csalatina.it/interpelli/index.php?option=com_fabrik&view=table&layout=_advancedsearch&tmpl=component&tableid=2&nextview=table&nextcontroller=table",
-    "Advanced search"
-   ]
-  ]
+  "stato": "ok",
+  "avvisi": 75,
+  "dettaglio": ""
  },
  {
   "regione": "Lazio",
@@ -278,35 +260,9 @@
   "regione": "Lombardia",
   "nome": "USP Lecco",
   "url": "https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti",
-  "stato": "vuota",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": [
-   [
-    "https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti?p_p_id=1_WAR_miurmulticategoriesnavigator100SNAPSHOT&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_r_p_categoryIds=10322721",
-    "2026"
-   ],
-   [
-    "https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti?p_p_id=1_WAR_miurmulticategoriesnavigator100SNAPSHOT&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_r_p_categoryIds=10322722",
-    "Gennaio"
-   ],
-   [
-    "https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti?p_p_id=1_WAR_miurmulticategoriesnavigator100SNAPSHOT&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_r_p_categoryIds=10423016",
-    "Febbraio"
-   ],
-   [
-    "https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti?p_p_id=1_WAR_miurmulticategoriesnavigator100SNAPSHOT&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_r_p_categoryIds=10521977",
-    "Marzo"
-   ],
-   [
-    "https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti?p_p_id=1_WAR_miurmulticategoriesnavigator100SNAPSHOT&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_r_p_categoryIds=10621529",
-    "Aprile"
-   ],
-   [
-    "https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti?p_p_id=1_WAR_miurmulticategoriesnavigator100SNAPSHOT&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_r_p_categoryIds=10710798",
-    "Maggio"
-   ]
-  ]
+  "stato": "ok",
+  "avvisi": 178,
+  "dettaglio": ""
  },
  {
   "regione": "Lombardia",
@@ -391,38 +347,18 @@
  {
   "regione": "Piemonte",
   "nome": "USP Cuneo",
-  "url": "https://www.istruzionepiemonte.it/cuneo/category/interpelli/feed/",
-  "stato": "vuota",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": [
-   [
-    "https://www.istruzionepiemonte.it/area-immissioni-in-ruolo/reclutamento-personale-docente/",
-    "Reclutamento Personale Docente"
-   ],
-   [
-    "https://www.istruzionepiemonte.it/area-immissioni-in-ruolo/reclutamento-personale-ata/",
-    "Reclutamento Personale ATA"
-   ]
-  ]
+  "url": "https://www.istruzionepiemonte.it/cuneo/interpelli-supplenze-personale-docente/",
+  "stato": "ok",
+  "avvisi": 9,
+  "dettaglio": ""
  },
  {
   "regione": "Piemonte",
   "nome": "USP Novara",
-  "url": "https://www.istruzionepiemonte.it/novara/category/interpelli/feed/",
-  "stato": "vuota",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": [
-   [
-    "https://www.istruzionepiemonte.it/area-immissioni-in-ruolo/reclutamento-personale-docente/",
-    "Reclutamento Personale Docente"
-   ],
-   [
-    "https://www.istruzionepiemonte.it/area-immissioni-in-ruolo/reclutamento-personale-ata/",
-    "Reclutamento Personale ATA"
-   ]
-  ]
+  "url": "https://www.istruzionepiemonte.it/novara/interpelli-supplenze/",
+  "stato": "ok",
+  "avvisi": 10,
+  "dettaglio": ""
  },
  {
   "regione": "Puglia",
@@ -565,11 +501,10 @@
  {
   "regione": "Toscana",
   "nome": "USP Pisa",
-  "url": "https://www.toscana-istruzione.it/atpisa/category/news/",
-  "stato": "irraggiungibile",
-  "avvisi": 0,
-  "dettaglio": "",
-  "proposte": []
+  "url": "https://www.usp-pi.it/category/interpelli/",
+  "stato": "ok",
+  "avvisi": 10,
+  "dettaglio": ""
  },
  {
   "regione": "Trentino-Alto Adige",
@@ -616,7 +551,7 @@
  {
   "regione": "Valle d'Aosta",
   "nome": "USP Aosta",
-  "url": "https://www.scuole.vda.it/category/interpelli/feed/",
+  "url": "https://scuole.vda.it/interpelli",
   "stato": "irraggiungibile",
   "avvisi": 0,
   "dettaglio": "",

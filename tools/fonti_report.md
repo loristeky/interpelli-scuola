@@ -1,14 +1,11 @@
-# Rapporto sulle fonti (29/10/2026 09:41)
+# Rapporto sulle fonti (29/10/2026 10:03)
 
-Fonti controllate: 68. Funzionano: 59. Da guardare: 9.
+Fonti controllate: 68. Funzionano: 64. Da guardare: 4.
 
 ## Da guardare
 
 ### USP Salerno (Campania) - irraggiungibile
 - Indirizzo attuale: https://uat-salerno.it/Documenti/CIRCOLARI/Interpelli-per-reclutamento-personale-docente
-
-### USP Pisa (Toscana) - irraggiungibile
-- Indirizzo attuale: https://www.toscana-istruzione.it/atpisa/category/news/
 
 ### USP Trento (Trentino-Alto Adige) - irraggiungibile
 - Indirizzo attuale: https://www.vivoscuola.it/feed/
@@ -20,37 +17,7 @@ Fonti controllate: 68. Funzionano: 59. Da guardare: 9.
 - Forse: [Docenti scuola secondaria di secondo grado](https://www.vivoscuola.it/vivoscuola/tags_view/Utenti/Docenti/Docenti+scuola+secondaria+di+secondo+grado)
 
 ### USP Aosta (Valle d'Aosta) - irraggiungibile
-- Indirizzo attuale: https://www.scuole.vda.it/category/interpelli/feed/
-
-### USP Latina (Lazio) - vuota
-- Indirizzo attuale: https://www.csalatina.it/interpelli/
-- La pagina si apre ma non ci trovo avvisi: forse è cambiata la struttura o è la pagina sbagliata.
-- Forse: [Home](https://www.csalatina.it/interpelli/)
-- Forse: [Password dimenticata?](https://www.csalatina.it/interpelli/index.php?option=com_user&view=reset)
-- Forse: [Nome utente dimenticato?](https://www.csalatina.it/interpelli/index.php?option=com_user&view=remind)
-- Forse: [Advanced search](https://www.csalatina.it/interpelli/index.php?option=com_fabrik&view=table&layout=_advancedsearch&tmpl=component&tableid=2&nextview=table&nextcontroller=table)
-
-### USP Lecco (Lombardia) - vuota
-- Indirizzo attuale: https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti
-- La pagina si apre ma non ci trovo avvisi: forse è cambiata la struttura o è la pagina sbagliata.
-- Forse: [2026](https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti?p_p_id=1_WAR_miurmulticategoriesnavigator100SNAPSHOT&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_r_p_categoryIds=10322721)
-- Forse: [Gennaio](https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti?p_p_id=1_WAR_miurmulticategoriesnavigator100SNAPSHOT&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_r_p_categoryIds=10322722)
-- Forse: [Febbraio](https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti?p_p_id=1_WAR_miurmulticategoriesnavigator100SNAPSHOT&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_r_p_categoryIds=10423016)
-- Forse: [Marzo](https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti?p_p_id=1_WAR_miurmulticategoriesnavigator100SNAPSHOT&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_r_p_categoryIds=10521977)
-- Forse: [Aprile](https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti?p_p_id=1_WAR_miurmulticategoriesnavigator100SNAPSHOT&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_r_p_categoryIds=10621529)
-- Forse: [Maggio](https://www.mim.gov.it/web/lecco/interpelli-ricerca-supplenti?p_p_id=1_WAR_miurmulticategoriesnavigator100SNAPSHOT&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_r_p_categoryIds=10710798)
-
-### USP Cuneo (Piemonte) - vuota
-- Indirizzo attuale: https://www.istruzionepiemonte.it/cuneo/category/interpelli/feed/
-- La pagina si apre ma non ci trovo avvisi: forse è cambiata la struttura o è la pagina sbagliata.
-- Forse: [Reclutamento Personale Docente](https://www.istruzionepiemonte.it/area-immissioni-in-ruolo/reclutamento-personale-docente/)
-- Forse: [Reclutamento Personale ATA](https://www.istruzionepiemonte.it/area-immissioni-in-ruolo/reclutamento-personale-ata/)
-
-### USP Novara (Piemonte) - vuota
-- Indirizzo attuale: https://www.istruzionepiemonte.it/novara/category/interpelli/feed/
-- La pagina si apre ma non ci trovo avvisi: forse è cambiata la struttura o è la pagina sbagliata.
-- Forse: [Reclutamento Personale Docente](https://www.istruzionepiemonte.it/area-immissioni-in-ruolo/reclutamento-personale-docente/)
-- Forse: [Reclutamento Personale ATA](https://www.istruzionepiemonte.it/area-immissioni-in-ruolo/reclutamento-personale-ata/)
+- Indirizzo attuale: https://scuole.vda.it/interpelli
 
 ### USP Palermo (Sicilia) - vuota
 - Indirizzo attuale: https://pa.usr.sicilia.it/category/interpelli/feed/
@@ -83,6 +50,7 @@ Fonti controllate: 68. Funzionano: 59. Da guardare: 9.
 - USP Reggio Emilia (Emilia-Romagna): 1 avvisi
 - USP Rimini (Emilia-Romagna): 1 avvisi
 - USP Frosinone (Lazio): 13 avvisi
+- USP Latina (Lazio): 75 avvisi
 - USP Roma (Lazio): 10 avvisi
 - USP Viterbo (Lazio): 165 avvisi
 - USP Genova (Liguria): 95 avvisi
@@ -93,6 +61,7 @@ Fonti controllate: 68. Funzionano: 59. Da guardare: 9.
 - USP Brescia (Lombardia): 200 avvisi
 - USP Como (Lombardia): 200 avvisi
 - USP Cremona (Lombardia): 201 avvisi
+- USP Lecco (Lombardia): 178 avvisi
 - USP Lodi (Lombardia): 1 avvisi
 - USP Mantova (Lombardia): 3 avvisi
 - USP Milano (Lombardia): 1 avvisi
@@ -103,6 +72,8 @@ Fonti controllate: 68. Funzionano: 59. Da guardare: 9.
 - USP Ancona (Marche): 10 avvisi
 - USP Pesaro Urbino (Marche): 6 avvisi
 - USP Campobasso (Molise): 3 avvisi
+- USP Cuneo (Piemonte): 9 avvisi
+- USP Novara (Piemonte): 10 avvisi
 - USP Torino (Piemonte): 9 avvisi
 - USP Bari (Puglia): 42 avvisi
 - USP Foggia (Puglia): 10 avvisi
@@ -117,6 +88,7 @@ Fonti controllate: 68. Funzionano: 59. Da guardare: 9.
 - USP Trapani (Sicilia): 10 avvisi
 - USP Firenze (Toscana): 2 avvisi
 - USP Lucca (Toscana): 10 avvisi
+- USP Pisa (Toscana): 10 avvisi
 - USP Perugia (Umbria): 1 avvisi
 - USP Padova (Veneto): 34 avvisi
 - USP Rovigo (Veneto): 10 avvisi
