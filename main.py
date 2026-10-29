@@ -904,24 +904,13 @@ def deep_pages(regions_sources):
     return out
 
 
-def parse_source_page(region, source_name, url, known, deep=False):
-    """Scarica una pagina-fonte e restituisce (nuovi_interpelli, raggiungibile).
-
-    Gli avvisi già presenti nel database (`known`) non vengono riscaricati:
-    questo rende gli aggiornamenti successivi al primo molto più veloci.
-    """
+def _feed_items(text):
+    """[(titolo, link, data)] da un feed RSS o Atom; [] se il testo non è un feed."""
+    low = text.lower()
     items = []
-    try:
-        html_content = fetch_url(url)
-    except Exception as ex:
-        if not deep:                      # le pagine «provate» spesso non esistono: nessun errore da segnalare
-            log_source(source_name, err=short_error(ex))
-        return [], False
-
-    lower_content = html_content.lower()
-    if "<rss" in lower_content or "<feed" in lower_content or "<channel" in lower_content:
+    if "<rss" in low or "<feed" in low or "<channel" in low:
         try:
-            root = ET.fromstring(html_content)
+            root = ET.fromstring(text)
             for item in root.findall(".//item"):
                 title = clean_text(item.findtext("title"))
                 link = clean_text(item.findtext("link"))
@@ -940,6 +929,129 @@ def parse_source_page(region, source_name, url, known, deep=False):
                     items.append((title, link, pub_date))
         except Exception:
             pass
+    return items
+
+
+def _links_in(html_text, url):
+    """[(titolo, indirizzo, data)] dei collegamenti agli avvisi in una pagina HTML."""
+    out = []
+    for href, txt in re.findall(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html_text, re.I | re.S):
+        if href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        title = clean_text(txt)
+        if len(title) >= 15 and NOTICE_LINK_RE.search(title):
+            full_url = urljoin(url, href)
+            date_match = re.search(r'/(\d{4})/(\d{2})/(\d{2})/', full_url)
+            out.append((title, full_url, f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}" if date_match else ""))
+    return out
+
+
+# Uffici che non pubblicano un avviso per ogni interpello ma uno solo, riassuntivo, con tutti gli interpelli dentro
+# un PDF (es. Bergamo: «Interpelli per il conferimento di supplenza personale docente n. 72»). Dell'elenco si legge
+# solo l'avviso più recente (i vecchi sono già superati) e ogni riga del PDF diventa un interpello.
+DIGEST_SOURCES = {"USP Bergamo"}
+SCHOOL_CODE_RE = re.compile(r"\b[A-Z]{2}[A-Z]{2}[0-9]{5}[0-9A-Z]\b")
+
+
+def doc_full_text(url, max_pages=80):
+    """Testo di un PDF (riga per riga) o '' se non si legge. Serve pypdf."""
+    try:
+        from pypdf import PdfReader
+        import io
+        reader = PdfReader(io.BytesIO(fetch_bytes(url, limit=25_000_000)))
+        return "\n".join((pg.extract_text() or "") for pg in reader.pages[:max_pages])
+    except Exception:
+        return ""
+
+
+DIGEST_ROW_RE = re.compile(r"(?<![A-Z0-9])([A-Z]{2}[A-Z]{2}[0-9]{5}[0-9A-Z])\s*-\s+")
+DIGEST_DATE_RE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
+
+
+def _iso(d):
+    try:
+        return date(int(d[2]), int(d[1]), int(d[0])).isoformat()
+    except ValueError:
+        return None
+
+
+def parse_digest_rows(text):
+    """Tabella riassuntiva degli interpelli (Bergamo): una riga per interpello, con
+    «CODICE - SCUOLA  CLASSE - DESCRIZIONE  sezione  ore  inizio  fine  scadenza  link avviso  [link candidature]».
+    Restituisce [{codice, scuola, cdc, descrizione, ore, inizio, fine, scadenza, link, candidatura}]."""
+    flat = re.sub(r"\s+", " ", text.replace("\xa0", " "))
+    starts = list(DIGEST_ROW_RE.finditer(flat))
+    rows = []
+    for i, m in enumerate(starts):
+        block = flat[m.end():(starts[i + 1].start() if i + 1 < len(starts) else len(flat))]
+        # classe: la prima sigla «XXXX - » che sia una classe di concorso valida
+        cm = None
+        for c in re.finditer(r"(?<![A-Z0-9])([A-Z]{1,2}[0-9A-Z]{2,3})\s+-\s+", block):
+            if _codes_in(c.group(1)) == [c.group(1)]:
+                cm = c
+                break
+        if not cm:
+            continue
+        school = block[:cm.start()].strip(" -")
+        rest = block[cm.end():]
+        desc = re.split(r"\s+Interpell\w*\s+per\b|\s\d{1,2}\s*-\s*\d|\s\d{1,2}/\d{1,2}/\d{4}|https?://", rest, 1)[0].strip()
+        dates = [_iso(d) for d in DIGEST_DATE_RE.findall(rest)]
+        dates = [d for d in dates if d]
+        urls = re.findall(r"https?://\S+", rest)
+        ore = re.search(r"(\d{1,2})\s*ore\b", rest)
+        rows.append({"codice": m.group(1), "scuola": school, "cdc": cm.group(1), "descrizione": desc,
+                     "ore": ore.group(1) if ore else "",
+                     "inizio": dates[-3] if len(dates) >= 3 else "", "fine": dates[-2] if len(dates) >= 3 else "",
+                     "scadenza": dates[-1] if dates else None,
+                     "link": urls[0] if urls else "", "candidatura": urls[1] if len(urls) > 1 else ""})
+    return rows
+
+
+def digest_items(region, source_name, item, known):
+    """Righe-interpello dal PDF riassuntivo dell'avviso `item` = (titolo, link, data). None se non si riesce a leggere."""
+    title, link, pub = item
+    info = fetch_page_details(link, parse_date(pub))
+    if not info or not info.get("doc_url") or not info["doc_url"].lower().split("?")[0].endswith(".pdf"):
+        return None
+    rows = parse_digest_rows(doc_full_text(info["doc_url"]))
+    if not rows:
+        return None
+    published = info.get("published") or parse_date(pub) or ""
+    out, used = [], set()
+    for r in rows:
+        # indirizzo = avviso della scuola (si apre da lì); il frammento lo rende unico per scuola, classe e scadenza
+        base = r["link"] or info["doc_url"]
+        key = f"{r['codice']}-{r['cdc']}-{(r['scadenza'] or '').replace('-', '')}"
+        if "#" in base:                       # pagine web-app con «#/percorso»: non si tocca l'indirizzo
+            url = base if base not in used else f"{base}~{key}"
+        else:
+            url = f"{base}#{key}"
+        used.add(url)
+        if url in known:
+            continue
+        label = f"{r['scuola']} - {r['cdc']} {r['descrizione'].title()}" + (f" ({r['ore']} ore)" if r["ore"] else "")
+        out.append((label, url, region, source_name, "DOCENTI", published, r["scadenza"], r["cdc"],
+                    analyze_post_content(r["descrizione"]), r["candidatura"] or "",
+                    f"{r['codice'].lower()}@istruzione.it"))
+    return out
+
+
+def parse_source_page(region, source_name, url, known, deep=False):
+    """Scarica una pagina-fonte e restituisce (nuovi_interpelli, raggiungibile).
+
+    Gli avvisi già presenti nel database (`known`) non vengono riscaricati:
+    questo rende gli aggiornamenti successivi al primo molto più veloci.
+    """
+    items = []
+    try:
+        html_content = fetch_url(url)
+    except Exception as ex:
+        if not deep:                      # le pagine «provate» spesso non esistono: nessun errore da segnalare
+            log_source(source_name, err=short_error(ex))
+        return [], False
+
+    lower_content = html_content.lower()
+    items = _feed_items(html_content)
 
     # Portale USR Liguria: tabella con un link "interpello.php?id=N" per riga.
     if not items and "interpello.php" in lower_content:
@@ -953,16 +1065,28 @@ def parse_source_page(region, source_name, url, known, deep=False):
     # Pagine che non sono feed: cerca i link agli avvisi nel corpo della pagina (senza menu né piè di pagina).
     # Se il feed ha già fornito gli avvisi, i link dentro le descrizioni non si contano.
     if not items:
-        body_html = strip_chrome(html_content)
-        for href, txt in re.findall(r'<a\b[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', body_html, re.I | re.S):
-            if href.startswith(("#", "mailto:", "tel:", "javascript:")):
-                continue
-            title = clean_text(txt)
-            if len(title) >= 15 and NOTICE_LINK_RE.search(title):
-                full_url = urljoin(url, href)
-                date_match = re.search(r'/(\d{4})/(\d{2})/(\d{2})/', full_url)
-                pub_date_str = f"{date_match.group(1)}-{date_match.group(2)}-{date_match.group(3)}" if date_match else ""
-                items.append((title, full_url, pub_date_str))
+        items = _links_in(strip_chrome(html_content), url)
+    if not items:
+        # Molti temi WordPress mettono il titolo di ogni articolo dentro <header>: si toglie solo ciò che sicuramente
+        # non è contenuto (menu, piè di pagina, barre laterali).
+        light = re.sub(r'<(script|style|noscript)\b.*?</\1>', ' ', html_content, flags=re.I | re.S)
+        for tag in ("nav", "footer", "aside"):
+            light = re.sub(rf'<{tag}\b.*?</{tag}>', ' ', light, flags=re.I | re.S)
+        items = _links_in(light, url)
+    if not items and "<rss" not in lower_content and re.search(r"/(category|tag)/", url) and "feed" not in url:
+        try:                                              # le categorie WordPress hanno quasi sempre un feed
+            items = _feed_items(fetch_url(url.split("?")[0].rstrip("/") + "/feed/"))
+        except Exception:
+            pass
+
+    if source_name in DIGEST_SOURCES and items:
+        if deep:
+            return [], True                               # gli avvisi riassuntivi si leggono solo dalla fonte principale
+        rows = digest_items(region, source_name, items[0], known)
+        if rows is not None:
+            log_source(source_name, ok=True, found=len(rows), new=len(rows))
+            return rows, True
+        items = items[:1]                                 # PDF non leggibile: almeno l'ultimo avviso, come avviso unico
 
     if deep:
         items = [it for it in items if INTERPELLO_RE.search(it[0])]
