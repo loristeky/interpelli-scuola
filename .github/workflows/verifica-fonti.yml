@@ -21,6 +21,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+      - name: Installa la lettura dei PDF
+        run: pip install pypdf
+
       - name: Controlla le fonti
         run: python tools/verifica_fonti.py --out tools/fonti_report.md
       - name: Salva il rapporto
