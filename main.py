@@ -1133,13 +1133,19 @@ def parse_source_page(region, source_name, url, known, deep=False):
         except Exception:
             pass
 
-    if source_name in DIGEST_SOURCES and items:
-        if deep:
+    if source_name in DIGEST_SOURCES:
+        # Dell'elenco interessano solo gli avvisi veri («Interpelli per il conferimento di supplenza ... n. 72»), non i
+        # collegamenti alla pagina stessa (briciole di pane, menu laterale: «Interpelli Ricerca Supplenti»).
+        own = url.rstrip("/").lower()
+        items = [it for it in items if it[1].rstrip("/").lower() != own and len(it[0]) > 30
+                 and re.search(r"\bn\.?\s*\d+|conferimento", it[0], re.I)]
+        if deep or not items:
             return [], True                               # gli avvisi riassuntivi si leggono solo dalla fonte principale
-        rows = digest_items(region, source_name, items[0], known)
-        if rows is not None:
-            log_source(source_name, ok=True, found=len(rows), new=len(rows))
-            return rows, True
+        for it in items[:3]:                              # il primo è il più recente: si passa al successivo solo se non si legge
+            rows = digest_items(region, source_name, it, known)
+            if rows is not None:
+                log_source(source_name, ok=True, found=len(rows), new=len(rows))
+                return rows, True
         items = items[:1]                                 # PDF non leggibile: almeno l'ultimo avviso, come avviso unico
 
     if deep:
