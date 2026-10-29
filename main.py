@@ -667,9 +667,15 @@ def analyze_page(page_html, link, rss_published=None):
 
 
 def _open_bytes(url, limit, context=None):
-    req = Request(url, headers={"User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36"})
+    # Si chiede la versione compressa: l'elenco condiviso passa da ~1 MB a circa un quinto.
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36",
+                                "Accept-Encoding": "gzip"})
     with urlopen(req, timeout=10, context=context) as resp:
-        return resp.read(limit)
+        data = resp.read(limit)
+        if resp.headers.get("Content-Encoding", "").lower() == "gzip":
+            import gzip
+            data = gzip.decompress(data)
+        return data
 
 
 def fetch_bytes(url, limit=3_000_000):
@@ -744,6 +750,7 @@ def enrich_from_doc(info):
 # Elenco già pronto: l'automazione su GitHub legge le fonti ogni 30 minuti e pubblica interpelli.json (ramo «dati»).
 # Scaricare quel file è molto più veloce che leggere decine di siti, e funziona anche quando l'app è chiusa.
 SHARED_URL = "https://raw.githubusercontent.com/loristeky/interpelli-scuola/dati/interpelli.json"
+SHARED_RECENT_URL = "https://raw.githubusercontent.com/loristeky/interpelli-scuola/dati/recenti.json"   # solo gli ultimi 7 giorni
 INSERT_SQL = """INSERT INTO interpelli (title, url, region, source, target, published, deadline, cdc, post_type, doc_url, email)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(url) DO UPDATE SET title=excluded.title, target=excluded.target,
@@ -755,10 +762,10 @@ INSERT_SQL = """INSERT INTO interpelli (title, url, region, source, target, publ
 SHARED_INFO = {"age_min": None}
 
 
-def load_shared(conn, known):
+def load_shared(conn, known, recent=False):
     """Scarica l'elenco pronto e lo salva. Restituisce la lista degli avvisi NUOVI (righe), o None se non disponibile."""
     try:
-        data = json.loads(fetch_bytes(SHARED_URL, 8_000_000).decode("utf-8"))
+        data = json.loads(fetch_bytes(SHARED_RECENT_URL if recent else SHARED_URL, 12_000_000).decode("utf-8"))
         rows = [r for r in data.get("righe", []) if isinstance(r, list) and len(r) == 11 and isinstance(r[1], str)]
         try:
             ts = datetime.strptime(data.get("aggiornato", ""), "%Y-%m-%dT%H:%M:%SZ")
@@ -3304,7 +3311,19 @@ def build(page: ft.Page, raw_prefs=None):
                     if not region and prefs.get("shared", True):
                         status_text.value = "Scarico l'elenco già pronto…"
                         page.update()
-                        got = load_shared(conn, known)
+                        # Dopo il primo scaricamento completo basta l'elenco degli ultimi 7 giorni (pochi KB):
+                        # quello completo si riscarica solo se sono passati più di 5 giorni.
+                        try:
+                            last_full = datetime.strptime(prefs.get("shared_full", ""), "%Y-%m-%d").date()
+                            recent = (date.today() - last_full).days <= 5
+                        except ValueError:
+                            recent = False
+                        got = load_shared(conn, known, recent)
+                        if got is None and recent:
+                            got, recent = load_shared(conn, known, False), False
+                        if got is not None and not recent:
+                            prefs["shared_full"] = date.today().isoformat()
+                            save_prefs()
                         if got is not None:
                             shared_ok = True
                             new_count += len(got)
