@@ -88,8 +88,19 @@ def diagnosi_digest(app, region, name, url):
             out.append(f"- Avviso più recente: {good[0][0][:70]} ({len(notice)} caratteri), allegati: {len(hrefs)}")
             for h in hrefs[:4]:
                 full = app.urljoin(good[0][1], h.replace("&amp;", "&"))
-                rows = app.parse_digest_rows(app.doc_full_text(full))
-                out.append(f"  - {full[:100]} -> {len(rows)} righe lette")
+                try:
+                    import pypdf  # noqa: F401
+                    lettore = "pypdf ok"
+                except ImportError:
+                    lettore = "pypdf NON installato"
+                try:
+                    raw = app.fetch_bytes(full, limit=25_000_000)
+                    scarico = f"{len(raw)} byte, inizia con {raw[:5]!r}"
+                except Exception as ex:
+                    scarico = f"scaricamento fallito: {str(ex)[:80]}"
+                text = app.doc_full_text(full)
+                rows = app.parse_digest_rows(text)
+                out.append(f"  - {full[:100]} -> {len(rows)} righe lette ({lettore}; {scarico}; testo estratto: {len(text)} caratteri)")
         except Exception as ex:
             out.append(f"- Avviso non letto: {str(ex)[:100]}")
     return out + [""]
