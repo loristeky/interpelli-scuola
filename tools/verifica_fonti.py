@@ -63,6 +63,38 @@ def check(app, region, name, url):
             "dettaglio": ""}
 
 
+def diagnosi_digest(app, region, name, url):
+    """Per le fonti con avviso riassuntivo (PDF): mostra passo per passo cosa trova l'app, per capire dove si ferma."""
+    import re as _re
+    out = [f"### Diagnosi {name}", f"- Pagina: {url}"]
+    try:
+        page = app.fetch_url(url)
+    except Exception as ex:
+        return out + [f"- Pagina non raggiungibile: {str(ex)[:100]}"]
+    out.append(f"- Pagina scaricata: {len(page)} caratteri")
+    links = app._links_in(page, url) + app._links_in(app._light_html(page), url)
+    links = list(dict.fromkeys(links))
+    out.append(f"- Collegamenti da avviso trovati: {len(links)}")
+    for t, l, _d in links[:8]:
+        out.append(f"  - {t[:70]} -> {l[:90]}")
+    good = [x for x in links if len(x[0]) > 30 and _re.search(r"\bn\.?\s*\d+|conferimento", x[0], _re.I)
+            and x[1].rstrip("/").lower() != url.rstrip("/").lower()]
+    out.append(f"- Avvisi con numero: {len(good)}")
+    if good:
+        try:
+            notice = app.fetch_url(good[0][1])
+            hrefs = [h for h in _re.findall(r'href=["\']([^"\']+)["\']', notice, _re.I)
+                     if _re.search(r"\.pdf|/documents/", h, _re.I)]
+            out.append(f"- Avviso più recente: {good[0][0][:70]} ({len(notice)} caratteri), allegati: {len(hrefs)}")
+            for h in hrefs[:4]:
+                full = app.urljoin(good[0][1], h.replace("&amp;", "&"))
+                rows = app.parse_digest_rows(app.doc_full_text(full))
+                out.append(f"  - {full[:100]} -> {len(rows)} righe lette")
+        except Exception as ex:
+            out.append(f"- Avviso non letto: {str(ex)[:100]}")
+    return out + [""]
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", default="tools/fonti_report.md")
@@ -93,6 +125,10 @@ def main(argv=None):
             lines.append("")
     lines += ["## Funzionano", ""] + [f"- {r['nome']} ({r['regione']}): {r['avvisi']} avvisi"
                                        for r in sorted(results, key=lambda r: (r['regione'], r['nome'])) if r["stato"] == "ok"]
+    for r in app.SOURCES.items():
+        for src in r[1]:
+            if src[0] in app.DIGEST_SOURCES:
+                lines += [""] + diagnosi_digest(app, r[0], src[0], src[1])
     Path(args.out).write_text("\n".join(lines) + "\n", encoding="utf-8")
     Path(args.out).with_suffix(".json").write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
     print("\n".join(lines[:4]))

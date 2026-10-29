@@ -932,6 +932,14 @@ def _feed_items(text):
     return items
 
 
+def _light_html(h):
+    """Come strip_chrome ma senza togliere <header>: molti temi mettono il titolo di ogni articolo lì dentro."""
+    h = re.sub(r'<(script|style|noscript)\b.*?</\1>', ' ', h, flags=re.I | re.S)
+    for tag in ("nav", "footer", "aside"):
+        h = re.sub(rf'<{tag}\b.*?</{tag}>', ' ', h, flags=re.I | re.S)
+    return h
+
+
 def _links_in(html_text, url):
     """[(titolo, indirizzo, data)] dei collegamenti agli avvisi in una pagina HTML."""
     out = []
@@ -1010,17 +1018,31 @@ def parse_digest_rows(text):
 def digest_items(region, source_name, item, known):
     """Righe-interpello dal PDF riassuntivo dell'avviso `item` = (titolo, link, data). None se non si riesce a leggere."""
     title, link, pub = item
-    info = fetch_page_details(link, parse_date(pub))
-    if not info or not info.get("doc_url") or not info["doc_url"].lower().split("?")[0].endswith(".pdf"):
+    try:
+        page = fetch_url(link)
+    except Exception:
         return None
-    rows = parse_digest_rows(doc_full_text(info["doc_url"]))
+    # Allegati: «.pdf» ovunque nell'indirizzo (i siti con Liferay scrivono .../file.pdf/codice?versione=1) o cartella
+    # «documents»; prima quelli che parlano di interpelli. Si prova a leggerli finché uno contiene la tabella.
+    hrefs = [urljoin(link, html.unescape(h)) for h in re.findall(r'href=["\']([^"\']+)["\']', page, re.I)]
+    cands = [h for h in dict.fromkeys(hrefs) if re.search(r"\.pdf(?:$|[/?#&])", h, re.I) or "/documents/" in h.lower()]
+    cands.sort(key=lambda h: 0 if re.search(r"interpell|supplenz", h, re.I) else 1)
+    rows, doc = [], ""
+    for cand in cands[:5]:
+        rows = parse_digest_rows(doc_full_text(cand))
+        if rows:
+            doc = cand
+            break
     if not rows:
         return None
-    published = info.get("published") or parse_date(pub) or ""
+    published = parse_date(pub) or ""
+    if not published:
+        dm = re.search(r"\d{1,2}\s+(?:%s)\w*\s+\d{4}" % "|".join(MESI_IT), clean_text(page), re.I)
+        published = (parse_date(dm.group(0)) if dm else "") or ""
     out, used = [], set()
     for r in rows:
         # indirizzo = avviso della scuola (si apre da lì); il frammento lo rende unico per scuola, classe e scadenza
-        base = r["link"] or info["doc_url"]
+        base = r["link"] or doc
         key = f"{r['codice']}-{r['cdc']}-{(r['scadenza'] or '').replace('-', '')}"
         if "#" in base:                       # pagine web-app con «#/percorso»: non si tocca l'indirizzo
             url = base if base not in used else f"{base}~{key}"
@@ -1119,10 +1141,7 @@ def parse_source_page(region, source_name, url, known, deep=False):
     if not items:
         # Molti temi WordPress mettono il titolo di ogni articolo dentro <header>: si toglie solo ciò che sicuramente
         # non è contenuto (menu, piè di pagina, barre laterali).
-        light = re.sub(r'<(script|style|noscript)\b.*?</\1>', ' ', html_content, flags=re.I | re.S)
-        for tag in ("nav", "footer", "aside"):
-            light = re.sub(rf'<{tag}\b.*?</{tag}>', ' ', light, flags=re.I | re.S)
-        items = _links_in(light, url)
+        items = _links_in(_light_html(html_content), url)
     if not items:
         items = _table_items(html_content, url)
     if not items:
@@ -1134,6 +1153,9 @@ def parse_source_page(region, source_name, url, known, deep=False):
             pass
 
     if source_name in DIGEST_SOURCES:
+        # La lista degli avvisi può stare dentro tag che altrove si scartano (header, aside): per queste fonti si guarda
+        # in tutta la pagina, tenendo poi solo gli avvisi veri.
+        items = list(dict.fromkeys(items + _links_in(_light_html(html_content), url) + _links_in(html_content, url)))
         # Dell'elenco interessano solo gli avvisi veri («Interpelli per il conferimento di supplenza ... n. 72»), non i
         # collegamenti alla pagina stessa (briciole di pane, menu laterale: «Interpelli Ricerca Supplenti»).
         own = url.rstrip("/").lower()
@@ -1141,11 +1163,12 @@ def parse_source_page(region, source_name, url, known, deep=False):
                  and re.search(r"\bn\.?\s*\d+|conferimento", it[0], re.I)]
         if deep or not items:
             return [], True                               # gli avvisi riassuntivi si leggono solo dalla fonte principale
-        for it in items[:3]:                              # il primo è il più recente: si passa al successivo solo se non si legge
-            rows = digest_items(region, source_name, it, known)
-            if rows is not None:
-                log_source(source_name, ok=True, found=len(rows), new=len(rows))
-                return rows, True
+        # Solo l'avviso più recente (numero più alto; a parità, il primo della pagina): i precedenti sono già superati.
+        items.sort(key=lambda it: -int((re.search(r"\bn\.?\s*(\d+)", it[0], re.I) or [0, 0])[1]))
+        rows = digest_items(region, source_name, items[0], known)
+        if rows is not None:
+            log_source(source_name, ok=True, found=len(rows), new=len(rows))
+            return rows, True
         items = items[:1]                                 # PDF non leggibile: almeno l'ultimo avviso, come avviso unico
 
     if deep:
