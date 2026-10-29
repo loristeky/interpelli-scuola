@@ -1,4 +1,4 @@
-# Rapporto sulle fonti (29/10/2026 11:04)
+# Rapporto sulle fonti (29/10/2026 11:37)
 
 Fonti controllate: 68. Funzionano: 64. Da guardare: 4.
 
@@ -61,7 +61,7 @@ Fonti controllate: 68. Funzionano: 64. Da guardare: 4.
 - USP Brescia (Lombardia): 200 avvisi
 - USP Como (Lombardia): 200 avvisi
 - USP Cremona (Lombardia): 201 avvisi
-- USP Lecco (Lombardia): 180 avvisi
+- USP Lecco (Lombardia): 181 avvisi
 - USP Lodi (Lombardia): 1 avvisi
 - USP Mantova (Lombardia): 3 avvisi
 - USP Milano (Lombardia): 1 avvisi
@@ -109,6 +109,6 @@ Fonti controllate: 68. Funzionano: 64. Da guardare: 4.
   - Interpelli per il conferimento di supplenza personale docente n. 67 -> https://www.mim.gov.it/web/bergamo/-/interpelli-per-il-conferimento-di-supplenza-personale
   - Interpelli per il conferimento di supplenza personale docente n. 66 -> https://www.mim.gov.it/web/bergamo/-/interpelli-per-il-conferimento-di-supplenza-personale
 - Avvisi con numero: 200
-- Avviso più recente: Interpelli per il conferimento di supplenza personale docente n. 72 (91515 caratteri), allegati: 1
-  - https://www.mim.gov.it/documents/9081047/10244555/Interpelli+n.+72.pdf/541c9fbd-8772-fb66-6355-c4bca -> 0 righe lette
+- Avviso più recente: Interpelli per il conferimento di supplenza personale docente n. 72 (91561 caratteri), allegati: 1
+  - https://www.mim.gov.it/documents/9081047/10244555/Interpelli+n.+72.pdf/541c9fbd-8772-fb66-6355-c4bca -> 0 righe lette (pypdf NON installato; 217077 byte, inizia con b'%PDF-'; testo estratto: 0 caratteri)
 
