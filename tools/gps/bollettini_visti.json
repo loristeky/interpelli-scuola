@@ -114,6 +114,9 @@
 "https://www.istruzione-ancona.it/nomine-a-tempo-determinato-a-s-2026-2027-3/",
 "https://www.istruzione-ancona.it/nomine-a-tempo-determinato-a-s-2026-2027-5/",
 "https://www.istruzione-ancona.it/nomine-a-tempo-determinato-a-s-2026-2027/",
+"https://www.istruzione.calabria.it/catanzaro/personale-docente-supplenze-a-s-2026-2027-vii-bollettino-di-nomine/",
+"https://www.istruzione.calabria.it/catanzaro/wp-content/uploads/2026/10/Bollettino_TotaleNomine_Turno7-1.pdf",
+"https://www.istruzione.calabria.it/catanzaro/wp-content/uploads/2026/10/m_pi.AOOUSPCZ.REGISTRO-UFFICIALEU.0011510.30-10-2026.pdf",
 "https://www.istruzione.calabria.it/cosenza/aoouspcs12781-20260829/",
 "https://www.istruzione.calabria.it/cosenza/wp-content/uploads/2026/08/BollettinoTotaleNomine-4.pdf",
 "https://www.istruzione.calabria.it/cosenza/wp-content/uploads/2026/08/m_pi.AOOUSPCS.REGISTRO-UFFICIALEU.0012781.29-08-2026.pdf",
@@ -388,7 +391,8 @@
 "Piacenza": 12,
 "Cuneo": 6,
 "Lucca": 6,
-"Rovigo": 1
+"Rovigo": 1,
+"Catanzaro": 7
 },
 "origine": {
 "Pescara_bollettino-1.pdf": [
@@ -1002,6 +1006,14 @@
 "Rovigo_bollettino-1.pdf": [
 "https://rovigo.istruzioneveneto.gov.it/2026/08/26/avviso-bollettino-conferme-sostegno/",
 "https://rovigo.istruzioneveneto.gov.it/wp-content/uploads/2026/08/Bollettino-conferme-sostegno.prot_.pdf"
+],
+"Catanzaro_bollettino-7.pdf": [
+"https://www.istruzione.calabria.it/catanzaro/personale-docente-supplenze-a-s-2026-2027-vii-bollettino-di-nomine/",
+"https://www.istruzione.calabria.it/catanzaro/wp-content/uploads/2026/10/Bollettino_TotaleNomine_Turno7-1.pdf"
+],
+"Catanzaro_bollettino-7_2.pdf": [
+"https://www.istruzione.calabria.it/catanzaro/personale-docente-supplenze-a-s-2026-2027-vii-bollettino-di-nomine/",
+"https://www.istruzione.calabria.it/catanzaro/wp-content/uploads/2026/10/m_pi.AOOUSPCZ.REGISTRO-UFFICIALEU.0011510.30-10-2026.pdf"
 ]
 }
 }
