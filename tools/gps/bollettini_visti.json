@@ -154,6 +154,7 @@
 "https://www.istruzionepiemonte.it/cuneo/nomine-gps-fase-16-5/",
 "https://www.istruzionepiemonte.it/cuneo/nomine-gps-fase-17-5/",
 "https://www.istruzionepiemonte.it/cuneo/nomine-gps-fase-18-5/",
+"https://www.istruzionepiemonte.it/cuneo/nomine-gps-fase-19-5/",
 "https://www.istruzionepiemonte.it/cuneo/nomine-gps-fase-5-5/",
 "https://www.istruzionepiemonte.it/cuneo/tag/nomine-gps/",
 "https://www.istruzionepiemonte.it/cuneo/wp-content/uploads/sites/5/2026/08/Bollettino_TotaleNominePDF.pdf",
@@ -164,6 +165,8 @@
 "https://www.istruzionepiemonte.it/cuneo/wp-content/uploads/sites/5/2026/10/Bollettino_TotaleNomine-FASE-17.xlsx",
 "https://www.istruzionepiemonte.it/cuneo/wp-content/uploads/sites/5/2026/10/Bollettino_TotaleNomine.xlsx",
 "https://www.istruzionepiemonte.it/cuneo/wp-content/uploads/sites/5/2026/10/Bollettino_TotaleNomineFASE16-1.xlsx",
+"https://www.istruzionepiemonte.it/cuneo/wp-content/uploads/sites/5/2026/11/AVVISO-Nomine-GPS-FASE-19.pdf",
+"https://www.istruzionepiemonte.it/cuneo/wp-content/uploads/sites/5/2026/11/Bollettino_TotaleNomineFASE19.xlsx",
 "https://www.istruzionepiemonte.it/novara/procedura-informatizzata-supplenze-esito-conferimento-incarichi-a-tempo-determinato-candidati-inseriti-nelle-graduatorie-provinciali-supplenze-gps-primo-turno/",
 "https://www.istruzionepiemonte.it/novara/procedura-informatizzata-supplenze-esito-conferimento-incarichi-a-tempo-determinato-candidati-inseriti-nelle-graduatorie-provinciali-supplenze-gps-secondo-turno-4/",
 "https://www.istruzionepiemonte.it/novara/tag/nomine/",
@@ -389,7 +392,7 @@
 "Chieti e Pescara": 6,
 "Caserta": 19,
 "Piacenza": 12,
-"Cuneo": 6,
+"Cuneo": 8,
 "Lucca": 6,
 "Rovigo": 1,
 "Catanzaro": 7
@@ -1014,6 +1017,14 @@
 "Catanzaro_bollettino-7_2.pdf": [
 "https://www.istruzione.calabria.it/catanzaro/personale-docente-supplenze-a-s-2026-2027-vii-bollettino-di-nomine/",
 "https://www.istruzione.calabria.it/catanzaro/wp-content/uploads/2026/10/m_pi.AOOUSPCZ.REGISTRO-UFFICIALEU.0011510.30-10-2026.pdf"
+],
+"Cuneo_bollettino-7.pdf": [
+"https://www.istruzionepiemonte.it/cuneo/nomine-gps-fase-19-5/",
+"https://www.istruzionepiemonte.it/cuneo/wp-content/uploads/sites/5/2026/11/AVVISO-Nomine-GPS-FASE-19.pdf"
+],
+"Cuneo_bollettino-8.xlsx": [
+"https://www.istruzionepiemonte.it/cuneo/nomine-gps-fase-19-5/",
+"https://www.istruzionepiemonte.it/cuneo/wp-content/uploads/sites/5/2026/11/Bollettino_TotaleNomineFASE19.xlsx"
 ]
 }
 }
