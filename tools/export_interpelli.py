@@ -88,12 +88,24 @@ def main(argv=None):
                     by_url[it[1]] = list(it)
                     new += 1
     print(f"Fonti raggiunte: {reached}/{len(jobs)} · nuovi avvisi: {new}")
+    for name in sorted(app.DIGEST_SOURCES):       # fonti con PDF riassuntivo: quante righe ci sono nell'elenco
+        n = sum(1 for r in by_url.values() if r[3] == name)
+        print(f"{name}: {n} interpelli nell'elenco (da PDF riassuntivo)")
 
     # avvisi senza scadenza: riprova a leggerla negli allegati (una volta sola per avviso)
     todo = [r for r in by_url.values() if not r[6] and r[9] and r[1] not in tried][:RECHECK]
     for r in todo:
         info = app.enrich_from_doc({"doc_url": r[9], "published": r[5] or "", "email": r[10] or "",
                                     "deadline": None, "text": ""})
+        if not info.get("deadline"):                      # allegato salvato insufficiente: si riapre l'avviso (tutti gli allegati)
+            try:
+                again = app.fetch_page_details(r[1], r[5] or None)
+                if again and again.get("deadline"):
+                    info["deadline"] = again["deadline"]
+                if again and again.get("email") and not info.get("email"):
+                    info["email"] = again["email"]
+            except Exception:
+                pass
         tried.add(r[1])
         if info.get("deadline"):
             r[6] = info["deadline"]
