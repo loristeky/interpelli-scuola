@@ -1648,7 +1648,8 @@ def build(page: ft.Page, raw_prefs=None):
         # ---- Preferenze dell'utente (classi di concorso, dati per le candidature)
         prefs = {"classes": [], "name": "", "phone": "", "gps_class": "", "gps_score": "",
                  "fav": [], "applied": [], "profiles": [], "theme": "", "calc": {},
-                 "sources": [], "src_status": {}, "deep": True, "dl_tried": [], "shared": True}
+                 "sources": [], "src_status": {}, "deep": True, "dl_tried": [], "shared": True,
+                 "last_auto": "", "shared_full": ""}
 
         store = ft.SharedPreferences()
 
@@ -1696,7 +1697,7 @@ def build(page: ft.Page, raw_prefs=None):
                         prefs["shared"] = data["shared"]
                     if data.get("theme") in ("light", "dark"):
                         prefs["theme"] = data["theme"]
-                    for key in ("name", "phone", "gps_class", "gps_score"):
+                    for key in ("name", "phone", "gps_class", "gps_score", "last_auto", "shared_full"):
                         if isinstance(data.get(key), str):
                             prefs[key] = data[key]
             except Exception:
