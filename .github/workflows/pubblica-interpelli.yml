@@ -36,8 +36,8 @@ jobs:
           git show origin/dati:provati.json > "$RUNNER_TEMP/prec-provati.json" 2>/dev/null || echo '[]' > "$RUNNER_TEMP/prec-provati.json"
 
       - name: Aggiorna l'elenco
-        run: python tools/export_interpelli.py --prec "$RUNNER_TEMP/prec.json" --prec-provati "$RUNNER_TEMP/prec-provati.json" \
-            --out "$RUNNER_TEMP/interpelli.json" --out-provati "$RUNNER_TEMP/provati.json"
+        run: |
+          python tools/export_interpelli.py --prec "$RUNNER_TEMP/prec.json" --prec-provati "$RUNNER_TEMP/prec-provati.json" --out "$RUNNER_TEMP/interpelli.json" --out-provati "$RUNNER_TEMP/provati.json"
 
       - name: Pubblica nel ramo dati
         run: |
