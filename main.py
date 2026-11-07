@@ -652,6 +652,28 @@ def extract_doc_urls(page_html, base_url):
     return sorted(found, key=rank)
 
 
+IMG_HREF_RE = re.compile(r'<a\b[^>]*?href=["\']([^"\']+\.(?:jpe?g|png)(?:\?[^"\']*)?)["\']', re.I)
+IMG_SRC_RE = re.compile(r'<img\b[^>]*?\b(?:data-src|src)=["\']([^"\']+\.(?:jpe?g|png)(?:\?[^"\']*)?)["\']', re.I)
+IMG_SKIP_RE = re.compile(r"logo|icon|favicon|banner|header|stemma|emoji|avatar|sprite|social|spacer|pixel|"
+                         r"facebook|twitter|whatsapp|telegram|instagram|youtube|\bqr", re.I)
+
+
+def extract_image_urls(page_html, base_url, limit=3):
+    """Immagini dell'avviso che potrebbero contenere il testo (locandine, scansioni): prima i link all'originale,
+    poi le immagini nella pagina; senza loghi e icone. Di quelle ridimensionate («-300x200») si prova prima l'originale."""
+    found = []
+    for pat in (IMG_HREF_RE, IMG_SRC_RE):
+        for h in pat.findall(page_html or ""):
+            u = urljoin(base_url, html.unescape(h))
+            if IMG_SKIP_RE.search(u.rsplit("/", 1)[-1]) or u in found:
+                continue
+            orig = re.sub(r"-\d{2,4}x\d{2,4}(?=\.\w+(?:\?|$))", "", u)
+            for cand in ([orig] if orig != u else []) + [u]:
+                if cand not in found:
+                    found.append(cand)
+    return found[:limit]
+
+
 def extract_doc_url(page_html, base_url):
     """Primo allegato (pdf/doc/odt) della pagina, preferendo quelli che parlano di interpello."""
     found = [urljoin(base_url, h) for h in DOC_RE.findall(page_html)]
@@ -699,8 +721,10 @@ def analyze_page(page_html, link, rss_published=None):
         "published_src": pub_src,
         "deadline": deadline,
         "deadline_src": deadline_src,
-        "doc_url": extract_doc_url(main_html, link) or extract_doc_url(page_html, link),
+        "doc_url": (extract_doc_url(main_html, link) or extract_doc_url(page_html, link)
+                    or (extract_image_urls(main_html, link) or [""])[0]),
         "doc_urls": extract_doc_urls(main_html, link) or extract_doc_urls(page_html, link),
+        "img_urls": extract_image_urls(main_html, link),
         "email": extract_email(text),
         "html": main_html[:20000],
     }
@@ -732,28 +756,102 @@ def fetch_bytes(url, limit=3_000_000):
         raise
 
 
+# Lettura del testo da immagini e PDF scansionati (OCR). Solo sul server (GitHub Actions: tesseract + poppler-utils)
+# e solo se INTERPELLI_OCR=1: l'app sul telefono non la usa mai. I PDF con testo normale non passano da qui.
+OCR_BUDGET = {"left": int(os.environ.get("OCR_MAX", "80"))}       # documenti letti con l'OCR per esecuzione
+OCR_STATE = {"lang": None}
+OCR_FOUND = set()                  # avvisi la cui scadenza è stata letta con l'OCR (da far verificare)
+_ocr_lock = threading.Lock()
+
+
+def ocr_available():
+    if os.environ.get("INTERPELLI_OCR") != "1":
+        return False
+    if OCR_STATE["lang"] is None:
+        OCR_STATE["lang"] = ""
+        try:
+            import shutil
+            import subprocess
+            if shutil.which("tesseract"):
+                langs = subprocess.run(["tesseract", "--list-langs"], capture_output=True, text=True,
+                                       timeout=20).stdout.split()
+                OCR_STATE["lang"] = "ita+eng" if "ita" in langs and "eng" in langs else (
+                    "ita" if "ita" in langs else "eng")
+        except Exception:
+            OCR_STATE["lang"] = ""
+    return bool(OCR_STATE["lang"])
+
+
+def ocr_bytes(data, kind="img", max_pages=3):
+    """Testo letto con tesseract da un'immagine (kind='img') o dalle prime pagine di un PDF (kind='pdf'); '' se non si può."""
+    if not ocr_available():
+        return ""
+    with _ocr_lock:
+        if OCR_BUDGET["left"] <= 0:
+            return ""
+        OCR_BUDGET["left"] -= 1
+    import glob
+    import subprocess
+    import tempfile
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            if kind == "pdf":
+                f = os.path.join(d, "a.pdf")
+                with open(f, "wb") as fh:
+                    fh.write(data)
+                subprocess.run(["pdftoppm", "-r", "150", "-f", "1", "-l", str(max_pages), "-png", f,
+                                os.path.join(d, "p")], capture_output=True, timeout=120)
+                pics = sorted(glob.glob(os.path.join(d, "p*.png")))
+            else:
+                f = os.path.join(d, "a.png" if data[:4] == b"\x89PNG" else "a.jpg")
+                with open(f, "wb") as fh:
+                    fh.write(data)
+                pics = [f]
+            out = []
+            for pic in pics:
+                r = subprocess.run(["tesseract", pic, "stdout", "-l", OCR_STATE["lang"], "--psm", "3"],
+                                   capture_output=True, timeout=120)
+                out.append(r.stdout.decode("utf-8", "replace"))
+        return re.sub(r"\s+", " ", " ".join(out)).strip()[:12000]
+    except Exception:
+        return ""
+
+
 def doc_text(url, max_chars=12000):
+    return doc_text_ex(url, max_chars)[0]
+
+
+def doc_text_ex(url, max_chars=12000):
     """Testo dell'allegato (PDF, Word .docx o OpenDocument .odt) per cercare scadenza ed email che non stanno nella
     pagina. '' se non si legge. I PDF si leggono con pypdf se è disponibile; gli altri con la sola libreria standard.
     Il tipo si riconosce dal contenuto, non solo dal nome (molti siti scrivono indirizzi senza estensione)."""
     import io
     try:
-        data = fetch_bytes(url, 6_000_000)
+        data = fetch_bytes(url, 8_000_000)
     except Exception:
-        return ""
+        return "", False
     try:
         if data[:4] == b"%PDF":
+            text = ""
             try:
                 from pypdf import PdfReader
+                reader = PdfReader(io.BytesIO(data))
+                out = []
+                for page in reader.pages[:8]:
+                    out.append(page.extract_text() or "")
+                    if sum(len(x) for x in out) > max_chars:
+                        break
+                text = re.sub(r"\s+", " ", " ".join(out))[:max_chars]
             except Exception:
-                return ""
-            reader = PdfReader(io.BytesIO(data))
-            out = []
-            for page in reader.pages[:8]:
-                out.append(page.extract_text() or "")
-                if sum(len(x) for x in out) > max_chars:
-                    break
-            return re.sub(r"\s+", " ", " ".join(out))[:max_chars]
+                pass
+            if len(text.strip()) < 40:                    # PDF scansionato: senza testo da leggere
+                scanned = ocr_bytes(data, "pdf")
+                if scanned:
+                    return scanned[:max_chars], True
+            return text, False
+        if data[:4] == b"\x89PNG" or data[:3] == b"\xff\xd8\xff":
+            txt = ocr_bytes(data, "img")                  # immagine (locandina, foto di un avviso)
+            return txt[:max_chars], bool(txt)
         if data[:2] == b"PK":
             import zipfile
             with zipfile.ZipFile(io.BytesIO(data)) as z:
@@ -765,30 +863,34 @@ def doc_text(url, max_chars=12000):
                     xml = z.read("content.xml").decode("utf-8", "replace")
                     xml = re.sub(r"</text:p>", "\n", xml)
                 else:
-                    return ""
-            return clean_text(re.sub(r"<[^>]+>", "", xml))[:max_chars]
+                    return "", False
+            return clean_text(re.sub(r"<[^>]+>", "", xml))[:max_chars], False
     except Exception:
-        return ""
-    return ""
+        return "", False
+    return "", False
 
 
 def enrich_from_doc(info):
     """Se la pagina non dice la scadenza (o l'email), la cerca negli allegati: prova tutti (fino a 4), perché spesso
     il primo è il modulo di domanda e la scadenza sta nella lettera dell'ufficio."""
     try:
-        if info is None or not (info.get("doc_url") or info.get("doc_urls")):
+        if info is None or not (info.get("doc_url") or info.get("doc_urls") or info.get("img_urls")):
             return info
         if info.get("deadline") and info.get("email"):
             return info
         urls = list(dict.fromkeys(([info["doc_url"]] if info.get("doc_url") else []) + list(info.get("doc_urls") or [])))
-        for url in urls[:4]:
-            txt = doc_text(url)
+        # le immagini si leggono per ultime (l'OCR è più lento e meno preciso) e solo se manca la scadenza
+        imgs = [u for u in (info.get("img_urls") or []) if u not in urls] if (ocr_available() and not info.get("deadline")) else []
+        for url in urls[:4] + imgs[:3]:
+            txt, via_ocr = doc_text_ex(url)
             if not txt:
                 continue
             if not info.get("deadline"):
                 dl, src = find_deadline(txt, info.get("published") or None)
                 if dl:
                     info["deadline"], info["deadline_src"] = dl, "allegato"
+                    if via_ocr:
+                        info["deadline_src"], info["ocr"] = "immagine (letta con OCR)", True
             if not info.get("email"):
                 info["email"] = extract_email(txt)
             if len(info.get("text", "")) < 200:
@@ -814,7 +916,7 @@ INSERT_SQL = """INSERT INTO interpelli (title, url, region, source, target, publ
                 email=CASE WHEN excluded.email != '' THEN excluded.email ELSE interpelli.email END"""
 
 
-SHARED_INFO = {"age_min": None}
+SHARED_INFO = {"age_min": None, "ocr": set()}
 
 
 def load_shared(conn, known, recent=False):
@@ -822,6 +924,7 @@ def load_shared(conn, known, recent=False):
     try:
         data = json.loads(fetch_bytes(SHARED_RECENT_URL if recent else SHARED_URL, 12_000_000).decode("utf-8"))
         rows = [r for r in data.get("righe", []) if isinstance(r, list) and len(r) == 11 and isinstance(r[1], str)]
+        SHARED_INFO["ocr"] = {u for u in (data.get("ocr") or []) if isinstance(u, str)}
         try:
             ts = datetime.strptime(data.get("aggiornato", ""), "%Y-%m-%dT%H:%M:%SZ")
             SHARED_INFO["age_min"] = (datetime.utcnow() - ts).total_seconds() / 60
@@ -886,7 +989,10 @@ def fetch_page_details(link, rss_published=None):
                                 "published_src": "elenco dell'ufficio" if rss_published else "", "deadline": None,
                                 "deadline_src": "", "doc_url": link, "email": ""})
     try:
-        return enrich_from_doc(analyze_page(fetch_url(link), link, rss_published))
+        info = enrich_from_doc(analyze_page(fetch_url(link), link, rss_published))
+        if info and info.get("ocr"):
+            OCR_FOUND.add(link)
+        return info
     except Exception:
         return None
 
@@ -1812,7 +1918,7 @@ def build(page: ft.Page, raw_prefs=None):
         prefs = {"classes": [], "name": "", "phone": "", "gps_class": "", "gps_score": "",
                  "fav": [], "applied": [], "profiles": [], "theme": "", "calc": {},
                  "sources": [], "src_status": {}, "deep": True, "dl_tried": [], "shared": True,
-                 "last_auto": "", "shared_full": ""}
+                 "last_auto": "", "shared_full": "", "ocr_urls": []}
 
         store = ft.SharedPreferences()
 
@@ -1854,6 +1960,8 @@ def build(page: ft.Page, raw_prefs=None):
                                                if isinstance(k, str) and isinstance(v, dict)}
                     if isinstance(data.get("dl_tried"), list):
                         prefs["dl_tried"] = [u for u in data["dl_tried"] if isinstance(u, str)][-600:]
+                    if isinstance(data.get("ocr_urls"), list):
+                        prefs["ocr_urls"] = [u for u in data["ocr_urls"] if isinstance(u, str)][-800:]
                     if isinstance(data.get("deep"), bool):
                         prefs["deep"] = data["deep"]
                     if isinstance(data.get("shared"), bool):
@@ -2315,6 +2423,8 @@ def build(page: ft.Page, raw_prefs=None):
             title, url, region, source, target, published, deadline, cdc, post_type, doc_url, email, verified = row
             is_ata = target == "ATA"
             d_text, d_bg, d_fg, d_icon = deadline_info(deadline)
+            if deadline and url in prefs["ocr_urls"]:
+                d_text += " ⚠"                       # scadenza letta da un'immagine: da verificare nell'avviso
             status = status_of(deadline)
             mine = matches_classes(title, cdc, prefs["classes"])
 
@@ -2497,7 +2607,8 @@ def build(page: ft.Page, raw_prefs=None):
                           f"Letta da: {info['published_src']}" if pub else "Controllala nell'avviso"),
                 date_line(ft.Icons.EVENT_BUSY_ROUNDED, "Scadenza per la candidatura",
                           fmt_deadline(deadline) if deadline else "Non trovata nella pagina",
-                          f"«…{info['deadline_src']}…»" if deadline else
+                          (f"«…{info['deadline_src']}…»" if "OCR" not in (info.get("deadline_src") or "") else
+                           "Letta da un'immagine con il riconoscimento del testo: controlla nell'avviso") if deadline else
                           "Potrebbe essere scritta solo nell'allegato: aprilo per controllare",
                           color=STATUS_COLORS[status_of(deadline)] if deadline else None),
             ]
@@ -3579,6 +3690,8 @@ def build(page: ft.Page, raw_prefs=None):
                             prefs["shared_full"] = date.today().isoformat()
                             save_prefs()
                         if got is not None:
+                            prefs["ocr_urls"] = list(dict.fromkeys(prefs["ocr_urls"] + sorted(SHARED_INFO["ocr"])))[-800:]
+                            save_prefs()
                             shared_ok = True
                             new_count += len(got)
                             mine_count += sum(1 for r in got if matches_classes(r[0], r[7], prefs["classes"]))
