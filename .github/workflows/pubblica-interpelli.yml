@@ -30,6 +30,12 @@ jobs:
       - name: Installa la lettura dei PDF
         run: pip install pypdf
 
+      # OCR per le scadenze scritte solo in un'immagine o in un PDF scansionato
+      - name: Installa il riconoscimento del testo (OCR)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-ita poppler-utils
+
       - name: Recupera l'elenco precedente
         run: |
           git fetch origin dati 2>/dev/null && git show origin/dati:interpelli.json > "$RUNNER_TEMP/prec.json" || echo '{}' > "$RUNNER_TEMP/prec.json"
