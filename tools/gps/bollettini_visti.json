@@ -118,6 +118,7 @@
 "https://www.istruzione-ancona.it/docenti-di-ogni-ordine-e-grado-nomine-a-tempo-determinato-a-s-2026-2027/",
 "https://www.istruzione-ancona.it/nomine-a-tempo-determinato-a-s-2026-2027-3/",
 "https://www.istruzione-ancona.it/nomine-a-tempo-determinato-a-s-2026-2027-5/",
+"https://www.istruzione-ancona.it/nomine-a-tempo-determinato-a-s-2026-2027-6/",
 "https://www.istruzione-ancona.it/nomine-a-tempo-determinato-a-s-2026-2027/",
 "https://www.istruzione-ancona.it/nomine-a-tempo-determinato-gps-personale-docente_-ust-ancona_a-s-26-27/",
 "https://www.istruzione-ancona.it/personale-docente-nomine-a-tempo-determinato-47/",
@@ -268,6 +269,7 @@
 "https://www.uat-caserta.it/2026/10/12/terzo-bollettino-totale-delle-nomine-generato-dal-sistema-informativo-del-ministero-contenente-i-nominativi-dei-destinatari-di-una-proposta-di-contratto-a-tempo-determinato-per-la-s-2026-2027/",
 "https://www.uat-caserta.it/2026/10/21/personale-a-t-a-avviso-di-convocazione-per-nomine-a-tempo-determinato-a-s-2026-27-profili-aa-cs/",
 "https://www.uat-caserta.it/2026/10/21/quarto-bollettino-totale-delle-nomine-generato-dal-sistema-informativo-del-ministero-contenente-i-nominativi-dei-destinatari-di-una-proposta-di-contratto-a-tempo-determinato-per-la-s-2026-2027/",
+"https://www.uat-caserta.it/2026/11/09/quinto-bollettino-totale-delle-nomine-generato-dal-sistema-informativo-del-ministero-contenente-i-nominativi-dei-destinatari-di-una-proposta-di-contratto-a-tempo-determinato-per-la-s-2026-2027/",
 "https://www.uat-caserta.it/wp-content/uploads/2026/09/Bollettino_TotaleNomine-20260921.pdf",
 "https://www.uat-caserta.it/wp-content/uploads/2026/09/ReportDettDispScuola-20260921.pdf",
 "https://www.uat-caserta.it/wp-content/uploads/2026/09/m_pi.AOOUSPCE.REGISTRO-UFFICIALEU.0025393.21-09-2026.pdf",
@@ -287,6 +289,9 @@
 "https://www.uat-caserta.it/wp-content/uploads/2026/10/m_pi.AOOUSPCE.REGISTRO-UFFICIALEU.0028280.21-10-2026.pdf",
 "https://www.uat-caserta.it/wp-content/uploads/2026/10/reportDispComplessivo-20261012.pdf",
 "https://www.uat-caserta.it/wp-content/uploads/2026/10/reportDispComplessivo-20261021.pdf",
+"https://www.uat-caserta.it/wp-content/uploads/2026/11/Bollettino_TotaleNomine-20261109.pdf",
+"https://www.uat-caserta.it/wp-content/uploads/2026/11/m_pi.AOOUSPCE.REGISTRO-UFFICIALEU.0029963.09-11-2026.pdf",
+"https://www.uat-caserta.it/wp-content/uploads/2026/11/reportDispComplessivo-20261109.pdf",
 "https://www.uat-napoli.it/graduatorie-provinciali-di-supplenza-quarto-bollettino-nomine-a-tempo-determinato-2026-2027-ogni-ordine-e-grado-napoli-e-provincia/",
 "https://www.uat-napoli.it/wp-content/uploads/2026/11/4°Bollettino_Tot_Nomine_Ogni_ord_e_grado_NA.pdf",
 "https://www.uat-napoli.it/wp-content/uploads/2026/11/REPORT_ULTIMI_NOMINATI_SU_POSTO_INTERO_4°BOLL_SUPP_03_11_2026.pdf",
@@ -418,7 +423,7 @@
 "Padova": 13,
 "Verona": 2,
 "Chieti e Pescara": 7,
-"Caserta": 19,
+"Caserta": 22,
 "Piacenza": 13,
 "Cuneo": 10,
 "Lucca": 6,
@@ -1104,6 +1109,14 @@
 "Chieti_e_Pescara_bollettino-7_3.pdf": [
 "https://www.istruzionechietipescara.it/2026/11/04/bollettino-n-7-nomine-a-tempo-determinato-da-gps-a-s-2026-2027/",
 "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/ALLEGATO-B-PESCARA-Bollettino-Turno-n.-7.pdf"
+],
+"Caserta_bollettino-20.pdf": [
+"https://www.uat-caserta.it/2026/11/09/quinto-bollettino-totale-delle-nomine-generato-dal-sistema-informativo-del-ministero-contenente-i-nominativi-dei-destinatari-di-una-proposta-di-contratto-a-tempo-determinato-per-la-s-2026-2027/",
+"https://www.uat-caserta.it/wp-content/uploads/2026/11/m_pi.AOOUSPCE.REGISTRO-UFFICIALEU.0029963.09-11-2026.pdf"
+],
+"Caserta_bollettino-21.pdf": [
+"https://www.uat-caserta.it/2026/11/09/quinto-bollettino-totale-delle-nomine-generato-dal-sistema-informativo-del-ministero-contenente-i-nominativi-dei-destinatari-di-una-proposta-di-contratto-a-tempo-determinato-per-la-s-2026-2027/",
+"https://www.uat-caserta.it/wp-content/uploads/2026/11/Bollettino_TotaleNomine-20261109.pdf"
 ]
 }
 }
