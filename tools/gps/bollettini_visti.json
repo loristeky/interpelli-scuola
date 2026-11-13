@@ -131,9 +131,12 @@
 "https://www.istruzione-ancona.it/nomine-a-tempo-determinato-gps-personale-docente_-ust-ancona_a-s-26-27/",
 "https://www.istruzione-ancona.it/personale-docente-nomine-a-tempo-determinato-47/",
 "https://www.istruzione.calabria.it/catanzaro/m_pi-aoouspcz-registro-ufficialeu-0011819-06-11-2026/",
+"https://www.istruzione.calabria.it/catanzaro/personale-docente-supplenze-a-s-2026-2027-ix-bollettino-di-nomine/",
 "https://www.istruzione.calabria.it/catanzaro/personale-docente-supplenze-a-s-2026-2027-vii-bollettino-di-nomine/",
 "https://www.istruzione.calabria.it/catanzaro/wp-content/uploads/2026/10/Bollettino_TotaleNomine_Turno7-1.pdf",
 "https://www.istruzione.calabria.it/catanzaro/wp-content/uploads/2026/10/m_pi.AOOUSPCZ.REGISTRO-UFFICIALEU.0011510.30-10-2026.pdf",
+"https://www.istruzione.calabria.it/catanzaro/wp-content/uploads/2026/11/BollettinoTotaleNomine_9.pdf",
+"https://www.istruzione.calabria.it/catanzaro/wp-content/uploads/2026/11/m_pi.AOOUSPCZ.REGISTRO-UFFICIALEU.0012078.12-11-2026.pdf",
 "https://www.istruzione.calabria.it/catanzaro/wp-content/uploads/AllegatiAttiAlboPretorio/BollettinoTotaleNomine_8.pdf",
 "https://www.istruzione.calabria.it/catanzaro/wp-content/uploads/AllegatiAttiAlboPretorio/m_pi.AOOUSPCZ.REGISTRO-UFFICIALEU.0011819.06-11-2026.pdf",
 "https://www.istruzione.calabria.it/cosenza/aoouspcs12781-20260829/",
@@ -455,7 +458,7 @@
 "Cuneo": 14,
 "Lucca": 7,
 "Rovigo": 3,
-"Catanzaro": 8,
+"Catanzaro": 9,
 "Napoli": 3,
 "Pisa": 4,
 "Frosinone": 12
@@ -1208,6 +1211,14 @@
 "Cuneo_bollettino-14.xlsx": [
 "https://www.istruzionepiemonte.it/cuneo/nomine-gps-fase-22-5/",
 "https://www.istruzionepiemonte.it/cuneo/wp-content/uploads/sites/5/2026/11/Bollettino_TotaleNomineFASE22.xlsx"
+],
+"Catanzaro_bollettino-9.pdf": [
+"https://www.istruzione.calabria.it/catanzaro/personale-docente-supplenze-a-s-2026-2027-ix-bollettino-di-nomine/",
+"https://www.istruzione.calabria.it/catanzaro/wp-content/uploads/2026/11/BollettinoTotaleNomine_9.pdf"
+],
+"Catanzaro_bollettino-9_2.pdf": [
+"https://www.istruzione.calabria.it/catanzaro/personale-docente-supplenze-a-s-2026-2027-ix-bollettino-di-nomine/",
+"https://www.istruzione.calabria.it/catanzaro/wp-content/uploads/2026/11/m_pi.AOOUSPCZ.REGISTRO-UFFICIALEU.0012078.12-11-2026.pdf"
 ]
 }
 }
