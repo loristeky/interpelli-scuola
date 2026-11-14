@@ -12,6 +12,7 @@ from datetime import datetime, date, timedelta
 from email.utils import parsedate_to_datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 from urllib.parse import urljoin, urlparse, quote
 import xml.etree.ElementTree as ET
 
@@ -47,11 +48,11 @@ SOURCES = {
     ],
     "Campania": [
         ("USP Caserta", "https://www.uat-caserta.it/category/segnalazioni-dalle-scuole/feed/", 1),
-        ("USP Salerno", "https://uat-salerno.it/Documenti/CIRCOLARI/Interpelli-per-reclutamento-personale-docente", 1),
+        ("USP Salerno", "https://www.mim.gov.it/web/miur-usr-campania/uat-salerno", 1),
         ("USP Napoli", "https://www.uat-napoli.it/tag/interpelli-personale-docente/feed/", 1)
     ],
     "Emilia-Romagna": [
-        ("USP Bologna", "https://bo.istruzioneer.gov.it/category/docenti/feed/", 1),
+        ("USP Bologna", "https://bo.istruzioneer.gov.it/tag/interpello/", 1),
         ("USP Ferrara", "https://fe.istruzioneer.gov.it/category/interpelli_docenti/", 1),
         ("USP Modena", "https://mo.istruzioneer.gov.it/category/interpelli-personale-docente-2026-27/", 1),
         ("USP Parma", "https://pr.istruzioneer.gov.it/interpelli-docenti/", 1),
@@ -112,18 +113,18 @@ SOURCES = {
         ("USP Agrigento", "https://ag.usr.sicilia.it/category/personale-scuola/personale-docente/interpelli/", 1),
         ("USP Caltanissetta-Enna", "https://cl-en.usr.sicilia.it/category/personale-scuola/personale-docente/", 1),
         ("USP Catania", "https://ct.usr.sicilia.it/category/interpelli/feed/", 1),
-        ("USP Palermo", "https://pa.usr.sicilia.it/category/interpelli/feed/", 1),
+        ("USP Palermo", "https://pa.usr.sicilia.it/page/1/?s=interpell", 1),
         ("USP Siracusa", "https://sr.usr.sicilia.it/tag/interpelli/", 1),
         ("USP Trapani", "https://tp.usr.sicilia.it/personale-scuola/interpelli/", 1),
         ("USP Messina", "https://me.usr.sicilia.it/personale-scuola/interpelli/", 1)
     ],
     "Toscana": [
-        ("USP Firenze", "https://www.ust.fi.it/", 1),
+        ("USP Firenze", "https://www.ust.fi.it/?s=interpell&submit=", 1),
         ("USP Lucca", "https://www.ustlucca.it/feed/", 1),
         ("USP Pisa", "https://www.usp-pi.it/category/interpelli/", 1)
     ],
     "Trentino-Alto Adige": [
-        ("USP Trento", "https://www.vivoscuola.it/feed/", 1)
+        ("USP Trento", "https://www.vivoscuola.it/Lavora-con-noi/Quadri-di-disponibilita", 1)
     ],
     "Umbria": [
         ("USP Perugia", "https://istruzione.umbria.it/interpelli/interpelli-aperti/", 1)
@@ -147,7 +148,6 @@ SOURCES = {
 MAX_WORKERS = 15
 PAGE_SIZE = 25          # interpelli mostrati per "blocco"
 DB_VERSION = 6          # alzare per forzare il rifacimento della cache
-GPS_LISTS_URL = "https://www.orizzontescuola.it/gps-docenti-2026-27-ecco-le-prime-graduatorie-in-aggiornamento/"
 SOON_DAYS = 3           # "in scadenza" = scade entro questi giorni
 
 MESI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"]
@@ -239,8 +239,70 @@ def clean_text(text):
     return re.sub(r'\s+', ' ', html.unescape(re.sub(r'<[^>]+>', ' ', text))).strip()
 
 
+USER_AGENT = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36"
+ROBOTS_TOKEN = "InterpelliScuola"
+ROBOTS_EXEMPT = ("raw.githubusercontent.com", "github.com", "api.github.com", "ntfy.sh")   # i nostri dati e i servizi propri
+ROBOTS_CACHE = {}                 # host -> RobotFileParser, oppure None se robots.txt non è raggiungibile (si procede)
+ROBOTS_SKIPPED = set()            # siti saltati perché il loro robots.txt non ammette l'accesso automatico
+_robots_lock = threading.Lock()
+
+
+class RobotsDisallowed(Exception):
+    """Il sito chiede (robots.txt) di non essere letto da programmi automatici: non lo leggiamo."""
+
+
+def robots_allowed(url):
+    """Controllo di robots.txt: SPENTO di default (l'app legge tutte le fonti come prima). Si attiva solo con la
+    variabile INTERPELLI_ROBOTS=1; allora True se l'indirizzo si può leggere (se robots.txt manca si procede)."""
+    if os.environ.get("INTERPELLI_ROBOTS") != "1":
+        return True
+    try:
+        pu = urlparse(url)
+        host = pu.netloc.lower()
+        if pu.scheme not in ("http", "https") or not host or host.removeprefix("www.") in ROBOTS_EXEMPT or host in ROBOTS_EXEMPT:
+            return True
+        with _robots_lock:
+            known = host in ROBOTS_CACHE
+        if not known:
+            from urllib.robotparser import RobotFileParser
+            rp = RobotFileParser()
+            robots = f"{pu.scheme}://{host}/robots.txt"
+            try:
+                req = Request(robots, headers={"User-Agent": USER_AGENT})
+                try:
+                    resp = urlopen(req, timeout=6, context=ssl.create_default_context())
+                except ssl.SSLError:
+                    ctx = ssl.create_default_context()
+                    ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
+                    resp = urlopen(req, timeout=6, context=ctx)
+                with resp:
+                    rp.parse(resp.read(300_000).decode("utf-8", "replace").splitlines())
+            except HTTPError as ex:
+                if ex.code in (401, 403):
+                    rp.disallow_all = True                  # regola standard: accesso negato = vietato
+                elif ex.code >= 500:
+                    rp = None
+                else:
+                    rp.allow_all = True                     # 404 e simili: nessun divieto
+            except Exception:
+                rp = None                                   # sito non raggiungibile: non c'è nulla da rispettare
+            with _robots_lock:
+                ROBOTS_CACHE[host] = rp
+        rp = ROBOTS_CACHE.get(host)
+        if rp is None:
+            return True
+        ok = rp.can_fetch(ROBOTS_TOKEN, url)
+        if not ok:
+            ROBOTS_SKIPPED.add(host)
+        return ok
+    except Exception:
+        return True
+
+
 def _open(url, context=None):
-    req = Request(url, headers={"User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36"})
+    if not robots_allowed(url):
+        raise RobotsDisallowed(url)
+    req = Request(url, headers={"User-Agent": USER_AGENT})
     with urlopen(req, timeout=10, context=context) as resp:
         raw = resp.read(2_000_000)
         return raw.decode(resp.headers.get_content_charset() or 'utf-8', errors='replace')
@@ -783,8 +845,9 @@ def analyze_page(page_html, link, rss_published=None):
 
 def _open_bytes(url, limit, context=None):
     # Si chiede la versione compressa: l'elenco condiviso passa da ~1 MB a circa un quinto.
-    req = Request(url, headers={"User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36",
-                                "Accept-Encoding": "gzip"})
+    if not robots_allowed(url):
+        raise RobotsDisallowed(url)
+    req = Request(url, headers={"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"})
     with urlopen(req, timeout=10, context=context) as resp:
         data = resp.read(limit)
         if resp.headers.get("Content-Encoding", "").lower() == "gzip":
@@ -975,8 +1038,8 @@ def enrich_from_doc(info):
 
 # Elenco già pronto: l'automazione su GitHub legge le fonti ogni 30 minuti e pubblica interpelli.json (ramo «dati»).
 # Scaricare quel file è molto più veloce che leggere decine di siti, e funziona anche quando l'app è chiusa.
-SHARED_URL = "https://raw.githubusercontent.com/loristeky/interpelli-scuola/dati/interpelli.json"
-SHARED_RECENT_URL = "https://raw.githubusercontent.com/loristeky/interpelli-scuola/dati/recenti.json"   # solo gli ultimi 7 giorni
+SHARED_URL = "https://raw.githubusercontent.com/loristeky/Interpelli-Docenti-e-ATA/dati/interpelli.json"
+SHARED_RECENT_URL = "https://raw.githubusercontent.com/loristeky/Interpelli-Docenti-e-ATA/dati/recenti.json"   # solo gli ultimi 7 giorni
 INSERT_SQL = """INSERT INTO interpelli (title, url, region, source, target, published, deadline, cdc, post_type, doc_url, email)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(url) DO UPDATE SET title=excluded.title, target=excluded.target,
@@ -1020,8 +1083,9 @@ def recheck_deadlines(conn, tried, limit=40):
     rows = conn.execute(
         "SELECT url, doc_url, published, email FROM interpelli "
         "WHERE (deadline IS NULL OR deadline = '') "
+        "AND source NOT IN (" + ",".join("?" * len(NO_RECHECK_SOURCES)) + ") "
         "AND (published = '' OR published >= date('now', '-45 day')) ORDER BY published DESC LIMIT ?",
-        (limit * 3,)).fetchall()
+        tuple(sorted(NO_RECHECK_SOURCES)) + (limit * 3,)).fetchall()
     todo = [r for r in rows if r[0] not in tried][:limit]
     found = 0
 
@@ -1213,6 +1277,13 @@ def _links_in(html_text, url):
 # un PDF (es. Bergamo: «Interpelli per il conferimento di supplenza personale docente n. 72»). Dell'elenco si legge
 # solo l'avviso più recente (i vecchi sono già superati) e ogni riga del PDF diventa un interpello.
 DIGEST_SOURCES = {"USP Bergamo"}
+TRENTO_PAGE = "https://www.vivoscuola.it/Lavora-con-noi/Quadri-di-disponibilita"
+# Fonti il cui elenco non ha una scadenza da cercare riaprendo la pagina: non si riprovano
+NO_RECHECK_SOURCES = DIGEST_SOURCES | {"USP Trento"}
+# Home di un ufficio con ogni tipo di notizia (circolari, ATA, permessi...): si tengono solo gli avvisi che nel titolo
+# hanno la parola «interpello/interpelli».
+STRICT_INTERPELLO_SOURCES = {"USP Salerno"}
+STRICT_INTERPELLO_RE = re.compile(r"interpell\w*", re.I)
 SCHOOL_CODE_RE = re.compile(r"\b[A-Z]{2}[A-Z]{2}[0-9]{5}[0-9A-Z]\b")
 
 
@@ -1270,6 +1341,26 @@ def parse_digest_rows(text):
     return rows
 
 
+def _unique_link(base, key, used):
+    """Indirizzo unico per ogni riga di un elenco riassuntivo. Se il link porta già a un avviso preciso
+    (web-app Argo «#/SG20955/atti/4759080») resta com'è; se è generico («#/?customerCode=…», «#/» o senza frammento) e
+    la stessa scuola ha più interpelli, serve distinguerli senza rompere il link: si aggiunge «?ref=…» PRIMA del
+    frammento (che le web-app ignorano), mai dentro il frammento (dove cambierebbe i parametri)."""
+    if "#" not in base:
+        return f"{base}#{key}"
+    path, frag = base.split("#", 1)
+    if re.search(r"/atti/|/\d{5,}", frag) and base not in used:
+        return base
+    sep = "&" if "?" in path else "?"
+    return f"{path}{sep}ref={key}#{frag}"
+
+
+def digest_number(title):
+    """Numero d'ordine di un avviso riassuntivo («... n. 85» -> 85); 0 se non c'è. Solo 1-3 cifre."""
+    m = re.search(r"\bn\.?\s*(\d{1,3})\b", title or "", re.I)
+    return int(m.group(1)) if m else 0
+
+
 def digest_items(region, source_name, item, known):
     """Righe-interpello dal PDF riassuntivo dell'avviso `item` = (titolo, link, data). None se non si riesce a leggere."""
     title, link, pub = item
@@ -1299,10 +1390,7 @@ def digest_items(region, source_name, item, known):
         # indirizzo = avviso della scuola (si apre da lì); il frammento lo rende unico per scuola, classe e scadenza
         base = r["link"] or doc
         key = f"{r['codice']}-{r['cdc']}-{(r['scadenza'] or '').replace('-', '')}"
-        if "#" in base:                       # pagine web-app con «#/percorso»: non si tocca l'indirizzo
-            url = base if base not in used else f"{base}~{key}"
-        else:
-            url = f"{base}#{key}"
+        url = _unique_link(base, key, used)
         used.add(url)
         if url in known:
             continue
@@ -1363,6 +1451,184 @@ def _dated_list_items(html_text, url):
     return out
 
 
+# ----------------------------------------------------------------------------
+# Trento: «Quadri di disponibilità» di vivoscuola.it. La pagina è una tabella che si riempie con JavaScript: i dati
+# arrivano da un indirizzo interno (DataTables lato server) che restituisce JSON. Sono posti disponibili, non avvisi con
+# scadenza: ogni riga diventa un avviso senza scadenza che rimanda alla pagina dei quadri.
+# ----------------------------------------------------------------------------
+TRENTO_COLUMNS = "classe_concorso|tipo_posto|scuola|numero_ore_incarico|tipo_incarico|data_inizio_incarico|data_fine_incarico"
+TRENTO_FILTERS = "scuola|classe_concorso|tipo_istituzione|tipo_incarico|tipo_posto|numero_ore_incarico|miurcode"
+TRENTO_API = ("https://www.vivoscuola.it/facetsearch/datatable_search/quadro_disponibilita/"
+              + quote(TRENTO_COLUMNS, safe="") + "/" + quote(TRENTO_FILTERS, safe="") + "/29192//false")
+
+
+def trento_request_url(start=0, length=500):
+    from urllib.parse import urlencode
+    q = [("draw", "1")]
+    for i in range(7):
+        q += [(f"columns[{i}][data]", str(i)), (f"columns[{i}][name]", ""), (f"columns[{i}][searchable]", "true"),
+              (f"columns[{i}][orderable]", "true"), (f"columns[{i}][search][value]", ""),
+              (f"columns[{i}][search][regex]", "false")]
+    q += [("order[0][column]", "0"), ("order[0][dir]", "asc"), ("start", str(start)), ("length", str(length)),
+          ("search[value]", ""), ("search[regex]", "false")]
+    q += [(k, "") for k in TRENTO_FILTERS.split("|")]
+    return TRENTO_API + "?" + urlencode(q)
+
+
+def fetch_xhr_json(url, referer):
+    """Scarica una risposta JSON come farebbe la pagina (richiesta XHR), con gli stessi criteri sui certificati."""
+    req = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json, text/javascript, */*; q=0.01",
+                                "X-Requested-With": "XMLHttpRequest", "Referer": referer})
+    try:
+        ctx = ssl.create_default_context()
+        with urlopen(req, timeout=15, context=ctx) as resp:
+            return json.loads(resp.read(8_000_000).decode("utf-8", "replace"))
+    except ssl.SSLError:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
+        with urlopen(req, timeout=15, context=ctx) as resp:
+            return json.loads(resp.read(8_000_000).decode("utf-8", "replace"))
+
+
+def _cell(v):
+    return clean_text(re.sub(r"<[^>]+>", " ", html.unescape(str(v if v is not None else "")))).strip()
+
+
+TRENTO_DETAIL = "https://www.vivoscuola.it/seiimport/getworksdetails/"
+
+
+def _trento_row_id(raw):
+    """Numero che identifica il posto (serve per aprire la finestra di dettaglio): lo si cerca nei campi tipici
+    (id, DT_RowId...) e, in mancanza, in un indirizzo «getworksdetails/N», in «data-id=N» o in un numero di 5-9 cifre."""
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            if re.search(r"(?:^|_)(?:id|nid|rowid|work\w*)$", str(k), re.I) and re.fullmatch(r"\D{0,8}(\d{4,9})", str(v)):
+                return re.search(r"(\d{4,9})", str(v)).group(1)
+    dump = json.dumps(raw, ensure_ascii=False)
+    for pat in (r"getworksdetails/(\d{4,9})", r"data-(?:id|work\w*|nid)=\\?[\"']?(\d{4,9})", r"\b(?:id|nid)=\\?[\"']?(\d{4,9})",
+                r"\((\d{5,9})\)", r"(?<![\d/.:-])(\d{5,9})(?![\d/.:-])"):
+        m = re.search(pat, dump)
+        if m:
+            return m.group(1)
+    return ""
+
+
+def _date_in(text):
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", text or "")
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    m = re.search(r"(\d{1,2})[/.](\d{1,2})[/.](\d{4})", text or "")
+    return f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}" if m else ""
+
+
+def trento_published(detail):
+    """«Data/ora richiesta pubblicazione» dalla finestra di dettaglio (JSON di forma non nota: si cerca la chiave o
+    l'etichetta che parla di pubblicazione/richiesta e la data accanto)."""
+    def walk(o):
+        if isinstance(o, dict):
+            label = any(isinstance(v, str) and re.search(r"richiesta.*pubblic|pubblic.*richiesta", v, re.I) for v in o.values())
+            for k, v in o.items():
+                if re.search(r"pubblic|richiesta", str(k), re.I) and isinstance(v, (str, int)) and _date_in(str(v)):
+                    return _date_in(str(v))
+                if label and isinstance(v, (str, int)) and not re.search(r"pubblic", str(v), re.I) and _date_in(str(v)):
+                    return _date_in(str(v))
+            for v in o.values():
+                r = walk(v)
+                if r:
+                    return r
+        elif isinstance(o, list):
+            for v in o:
+                r = walk(v)
+                if r:
+                    return r
+        return ""
+    return walk(detail)
+
+
+def trento_details(rid):
+    """(data di pubblicazione, email, scadenza) dalla finestra di dettaglio di un posto; vuoti se non si leggono."""
+    try:
+        detail = fetch_xhr_json(TRENTO_DETAIL + rid, TRENTO_PAGE)
+    except Exception:
+        return "", "", ""
+    text = clean_text(re.sub(r"<[^>]+>", " ", html.unescape(json.dumps(detail, ensure_ascii=False))))
+    email = extract_email(text) or ""
+    deadline, _src = find_deadline(text, trento_published(detail) or None)
+    return trento_published(detail), email, deadline or ""
+
+
+def trento_rows(payload):
+    """Righe di una risposta DataTables: ogni riga = 7 celle (classe, tipo posto, scuola, ore, tipo incarico, inizio, fine)
+    e, come ottavo elemento, l'id del posto per aprirne il dettaglio."""
+    out = []
+    for r in (payload.get("data") if isinstance(payload, dict) else None) or []:
+        if isinstance(r, dict):
+            keys = TRENTO_COLUMNS.split("|")
+            cells = [r.get(str(i), r.get(keys[i], "")) for i in range(7)]
+            if not any(cells):
+                cells = list(r.values())[:7]
+        elif isinstance(r, (list, tuple)):
+            cells = list(r)[:7]
+        else:
+            continue
+        cells = [_cell(c) for c in cells] + [""] * (7 - len(cells))
+        if any(cells):
+            out.append(cells + [_trento_row_id(r)])
+    return out
+
+
+def trento_items(region, source_name, known):
+    import hashlib
+    rows, start, total = [], 0, None
+    for _ in range(12):                                           # fino a ~6000 righe
+        payload = fetch_xhr_json(trento_request_url(start), TRENTO_PAGE)
+        got = trento_rows(payload)
+        rows += got
+        total = payload.get("recordsFiltered", payload.get("recordsTotal")) if isinstance(payload, dict) else None
+        start += len(got)
+        if not got or (isinstance(total, int) and start >= total):
+            break
+    today = date.today().isoformat()
+    fresh = []
+    for row in rows:
+        key = hashlib.sha1("|".join(row[:7]).encode("utf-8")).hexdigest()[:10]
+        if f"{TRENTO_PAGE}#{key}" not in known:
+            fresh.append(row)
+    details = {}
+    ids = [r[7] for r in fresh if r[7]][:400]                       # un tetto per esecuzione: il resto alla prossima
+    if ids:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            details = dict(zip(ids, ex.map(trento_details, ids)))
+    out = []
+    for cdc_txt, tipo_posto, scuola, ore, tipo_inc, inizio, fine, rid in fresh:
+        m = re.search(r"\b([A-Z]{1,2}-?\d{2,3}|[A-Z]{4})\b", cdc_txt)
+        cdc = m.group(1).replace("-", "") if m else ""
+        mm = re.fullmatch(r"([A-Z])(\d{2,3})", cdc)
+        if mm:
+            cdc = f"{mm.group(1)}{int(mm.group(2)):03d}"          # A28 -> A028 (come nel resto dell'app)
+        key = hashlib.sha1("|".join((cdc_txt, tipo_posto, scuola, ore, tipo_inc, inizio, fine)).encode("utf-8")).hexdigest()[:10]
+        url = f"{TRENTO_PAGE}#{key}"
+        if url in known:
+            continue
+        desc = re.sub(r"^\s*[A-Z]{1,2}-?\d{2,3}\s*[-–:]?\s*|^\s*[A-Z]{4}\s*[-–:]?\s*", "", cdc_txt).strip()
+        periodo = " - ".join(x for x in (parse_date(inizio) or inizio, parse_date(fine) or fine) if x)
+        label = f"{scuola} - {cdc} {desc}".strip(" -") + (f" ({ore} ore)" if ore else "")
+        if periodo:
+            label += f" · {periodo}"
+        pub, mail, dl = details.get(rid, ("", "", ""))
+        if not dl:                       # senza scadenza indicata: si assume il giorno prima della pubblicazione, da verificare (⚠)
+            try:
+                dl = (date.fromisoformat((pub or today)[:10]) - timedelta(days=1)).isoformat()
+                OCR_FOUND.add(url)
+            except ValueError:
+                dl = ""
+        out.append((label, url, region, source_name, "DOCENTI", pub or today, dl, cdc,
+                    analyze_post_content(f"{tipo_posto} {tipo_inc} {desc}"), "", mail))
+    return out, True
+
+
+
 def parse_source_page(region, source_name, url, known, deep=False):
     """Scarica una pagina-fonte e restituisce (nuovi_interpelli, raggiungibile).
 
@@ -1370,6 +1636,14 @@ def parse_source_page(region, source_name, url, known, deep=False):
     questo rende gli aggiornamenti successivi al primo molto più veloci.
     """
     items = []
+    if "vivoscuola.it" in url and "Quadri-di-disponibilita" in url:        # Trento: i dati arrivano da un'API JSON
+        if deep:
+            return [], True
+        try:
+            return trento_items(region, source_name, known)
+        except Exception as ex:
+            log_source(source_name, err=short_error(ex))
+            return [], False
     try:
         html_content = fetch_url(url)
     except Exception as ex:
@@ -1410,7 +1684,7 @@ def parse_source_page(region, source_name, url, known, deep=False):
     if source_name in DIGEST_SOURCES:
         # La lista degli avvisi può stare dentro tag che altrove si scartano (header, aside): per queste fonti si guarda
         # in tutta la pagina, tenendo poi solo gli avvisi veri.
-        items = list(dict.fromkeys(items + _links_in(_light_html(html_content), url) + _links_in(html_content, url)))
+        items = list(dict.fromkeys(_links_in(html_content, url) + _links_in(_light_html(html_content), url) + items))
         # Dell'elenco interessano solo gli avvisi veri («Interpelli per il conferimento di supplenza ... n. 72»), non i
         # collegamenti alla pagina stessa (briciole di pane, menu laterale: «Interpelli Ricerca Supplenti»).
         own = url.rstrip("/").lower()
@@ -1419,14 +1693,29 @@ def parse_source_page(region, source_name, url, known, deep=False):
         if deep or not items:
             return [], True                               # gli avvisi riassuntivi si leggono solo dalla fonte principale
         # Solo l'avviso più recente (numero più alto; a parità, il primo della pagina): i precedenti sono già superati.
-        items.sort(key=lambda it: -int((re.search(r"\bn\.?\s*(\d+)", it[0], re.I) or [0, 0])[1]))
-        rows = digest_items(region, source_name, items[0], known)
+        # Si prende il PRIMO avviso numerato nell'ordine della pagina (il più recente sta in cima). Non si ordina per
+        # numero: la numerazione riparte ogni anno e in fondo alla pagina ci sono avvisi vecchi con numeri più alti
+        # (es. n. 217 di anni fa contro n. 85 di oggi). Se il primo non ha righe leggibili, si prova col successivo.
+        items = [it for it in items if digest_number(it[0])]
+        rows = None
+        for cand in items[:3]:
+            got = digest_items(region, source_name, cand, known)
+            if got:
+                rows = got
+                break
+            if got is not None and rows is None:
+                rows = got
         if rows is not None:
             log_source(source_name, ok=True, found=len(rows), new=len(rows))
             return rows, True
         items = items[:1]                                 # PDF non leggibile: almeno l'ultimo avviso, come avviso unico
 
-    if deep:
+    if source_name in STRICT_INTERPELLO_SOURCES:
+        # l'elenco può stare in parti della pagina che altrove si scartano: si guarda in tutta la pagina
+        own = url.rstrip("/").lower()
+        items = list(dict.fromkeys(_links_in(html_content, url) + _links_in(_light_html(html_content), url) + items))
+        items = [it for it in items if STRICT_INTERPELLO_RE.search(it[0]) and it[1].rstrip("/").lower() != own]
+    elif deep:
         items = [it for it in items if INTERPELLO_RE.search(it[0])]
     elif source_name not in DIGEST_SOURCES and "interpell" not in url.lower():
         # Fonte «generica» (feed o home di tutto il sito, es. USP Foggia): pubblica anche circolari, concorsi, mobilità...
@@ -1631,7 +1920,7 @@ def load_gps_data(path=GPS_FILE):
 # "tipo": "GPS|Domande|Graduatorie|Altro", "url": "https://..."}]}). Lo stesso file viene copiato nel ramo «dati»
 # dal workflow «Pubblica elenco interpelli»: così si aggiornano le date senza rifare la build dell'app.
 SCADENZE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "scadenze.json")
-SCADENZE_URL = "https://raw.githubusercontent.com/loristeky/interpelli-scuola/dati/scadenze.json"
+SCADENZE_URL = "https://raw.githubusercontent.com/loristeky/Interpelli-Docenti-e-ATA/dati/scadenze.json"
 TIPI_SCADENZA = {"GPS": "#7048E8", "Domande": "#E8590C", "Graduatorie": "#1C7ED6", "Altro": "#6B7280"}
 MESI_LUNGHI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre",
                "ottobre", "novembre", "dicembre"]
@@ -1665,6 +1954,14 @@ def load_scadenze(remote=True):
             return _scadenze_voci(json.load(f))
     except (OSError, ValueError):
         return []
+
+
+def host_of(url):
+    """Dominio leggibile di un indirizzo («www.mim.gov.it» -> «mim.gov.it»)."""
+    try:
+        return urlparse(url).netloc.lower().removeprefix("www.") or url
+    except Exception:
+        return url
 
 
 def province_label(source):
@@ -1991,7 +2288,7 @@ def build(page: ft.Page, raw_prefs=None):
         prefs = {"classes": [], "name": "", "phone": "", "gps_class": "", "gps_score": "",
                  "fav": [], "applied": [], "profiles": [], "theme": "", "calc": {},
                  "sources": [], "src_status": {}, "deep": True, "dl_tried": [], "shared": True,
-                 "last_auto": "", "shared_full": "", "ocr_urls": []}
+                 "last_auto": "", "shared_full": "", "ocr_urls": [], "intro_ok": ""}
 
         store = ft.SharedPreferences()
 
@@ -2041,7 +2338,7 @@ def build(page: ft.Page, raw_prefs=None):
                         prefs["shared"] = data["shared"]
                     if data.get("theme") in ("light", "dark"):
                         prefs["theme"] = data["theme"]
-                    for key in ("name", "phone", "gps_class", "gps_score", "last_auto", "shared_full"):
+                    for key in ("name", "phone", "gps_class", "gps_score", "last_auto", "shared_full", "intro_ok"):
                         if isinstance(data.get(key), str):
                             prefs[key] = data[key]
             except Exception:
@@ -2367,11 +2664,25 @@ def build(page: ft.Page, raw_prefs=None):
                                     "WHERE deadline IS NOT NULL AND deadline >= ?", (today_s,)).fetchall()
                 conn.close()
                 stat_texts["open"].value = str(len(rows))
-                stat_texts["soon"].value = str(sum(1 for r in rows if r[2][:10] <= soon_s))
-                stat_texts["mine"].value = (str(sum(1 for r in rows if matches_classes(r[0], r[1], prefs["classes"])))
-                                            if prefs["classes"] else "–")
-            except Exception:
-                pass
+                stat_texts["soon"].value = str(sum(1 for r in rows if r[2][:10] <= soon_s
+                                                   and status_of(r[2]) != "expired"))
+                if prefs["classes"]:
+                    # stessi criteri della lista «Per te» (classe nel titolo o nel campo classi, avviso ancora aperto)
+                    parts, params = [], []
+                    for c in prefs["classes"]:
+                        parts.append("(cdc LIKE ? OR title LIKE ?)")
+                        params += [f"%{c}%", f"%{c}%"]
+                    conn = db_connect()
+                    mine_rows = conn.execute("SELECT deadline FROM interpelli WHERE (" + " OR ".join(parts) + ") "
+                                             "AND deadline IS NOT NULL AND deadline >= ?",
+                                             params + [today_s]).fetchall()
+                    conn.close()
+                    # solo avvisi non scaduti (anche con l'ora: scadenza di oggi già passata = scaduto)
+                    stat_texts["mine"].value = str(sum(1 for r in mine_rows if status_of(r[0]) != "expired"))
+                else:
+                    stat_texts["mine"].value = "–"
+            except Exception as ex:
+                print(f"Contatori non aggiornati: {ex}")
 
         filters_panel = ft.Column(spacing=10, visible=False, controls=[
             ft.Row(spacing=10, controls=[region_dropdown, province_dropdown]),
@@ -2547,7 +2858,7 @@ def build(page: ft.Page, raw_prefs=None):
             )
 
             # Azioni come sul sito: documento originale e candidatura via email
-            actions = []
+            actions = [ft.TextButton(content=f"Fonte: {host_of(url)}"[:34], icon=ft.Icons.LINK_ROUNDED, url=url)]
             if doc_url:
                 actions.append(ft.TextButton(content="Documento", icon=ft.Icons.DOWNLOAD_ROUNDED, url=doc_url))
             if email and status != "expired":
@@ -3432,12 +3743,6 @@ def build(page: ft.Page, raw_prefs=None):
                             ft.FilledTonalButton(content="Esito su tutte le mie classi",
                                                  icon=ft.Icons.FACT_CHECK_ROUNDED, on_click=run_all),
                             gps_all_out]),
-                        section_card([
-                            ft.Text("Altri strumenti", size=14, weight=ft.FontWeight.W_700),
-                            ft.TextButton(content="Graduatorie GPS di ogni provincia",
-                                          icon=ft.Icons.OPEN_IN_NEW_ROUNDED,
-                                          on_click=lambda e: gps_open(GPS_LISTS_URL)),
-                        ]),
                         ft.Text("Riserva servizio civile: il 15% dei chiamati di ogni classe in ogni bollettino (es. 20 chiamati: 3 posti riservati). I bollettini "
                                 "non dicono chi sono, quindi «ci saresti» vale anche con la quota piena (tolgo quei posti "
                                 "dai punteggi più bassi); «forse» se il tuo punteggio basta solo se i riservisti sono "
@@ -3860,8 +4165,16 @@ def build(page: ft.Page, raw_prefs=None):
                     state["refreshing"] = False
                     progress_bar.visible = False
                     refresh_button.disabled = False
+                    try:
+                        if OCR_FOUND:
+                            prefs["ocr_urls"] = list(dict.fromkeys(prefs["ocr_urls"] + sorted(OCR_FOUND)))[-800:]
+                            save_prefs()
+                    except Exception:
+                        pass
                     fill_provinces(state["region"])
                     load_results(reset=False, live=True)
+                    paint_stats()
+                    page.update()
                     msg = f"{new_count} nuovi interpelli" if new_count else "Nessun nuovo interpello"
                     if mine_count:
                         msg = f"⭐ {mine_count} nuovi per te · " + msg
@@ -4095,6 +4408,8 @@ def build(page: ft.Page, raw_prefs=None):
                         ft.Container(width=10, height=10, border_radius=5, bgcolor=color),
                         ft.Column(expand=True, spacing=0, controls=[
                             ft.Text(n + ("  (tua)" if is_custom else ""), size=13.5, weight=ft.FontWeight.W_700),
+                            ft.TextButton(content=host_of(u), icon=ft.Icons.LINK_ROUNDED, url=u,
+                                          style=ft.ButtonStyle(padding=ft.Padding.symmetric(horizontal=0, vertical=0))),
                             ft.Text(msg, size=11.5, color=ft.Colors.ON_SURFACE_VARIANT)]),
                         *trailing])))
             sv_list.controls = rows
@@ -4160,7 +4475,7 @@ def build(page: ft.Page, raw_prefs=None):
                     ft.Column(expand=True, spacing=0, controls=[
                         ft.Text("Fonti degli interpelli", size=20, weight=ft.FontWeight.W_800,
                                 color=ft.Colors.WHITE),
-                        ft.Text("Quali siti rispondono e quali no", size=12,
+                        ft.Text("Fonti ufficiali: ogni voce apre il sito originale", size=12,
                                 color=ft.Colors.with_opacity(0.88, ft.Colors.WHITE))])]),
                 ft.Container(padding=ft.Padding.only(left=16), content=sv_summary)]))
 
@@ -4454,8 +4769,18 @@ def build(page: ft.Page, raw_prefs=None):
                         "e li mostra in un posto solo.", size=13),
                 ft.Text("Le stime GPS (province, riserva del 15%, punteggio) sono indicative: fanno fede gli "
                         "Uffici Scolastici e i bollettini ufficiali.", size=13),
-                ft.Text("L'app non è collegata né affiliata al Ministero dell'Istruzione e del Merito. "
-                        "Non raccoglie dati personali: classi e preferenze restano sul tuo telefono.",
+                ft.Text("Interpelli Scuola NON è un'app governativa e non rappresenta nessun ente pubblico: è "
+                        "un'app indipendente, non collegata né affiliata al Ministero dell'Istruzione e del Merito né "
+                        "agli Uffici Scolastici. Non raccoglie dati personali: classi e preferenze restano sul tuo "
+                        "telefono.", size=13, weight=ft.FontWeight.W_600),
+                ft.Text("Fonti ufficiali delle informazioni:", size=13, weight=ft.FontWeight.W_700),
+                ft.TextButton(content="Ministero dell'Istruzione e del Merito (mim.gov.it)",
+                              icon=ft.Icons.ACCOUNT_BALANCE_ROUNDED, url="https://www.mim.gov.it/"),
+                ft.TextButton(content="Elenco di tutti i siti degli Uffici Scolastici letti dall'app",
+                              icon=ft.Icons.LIST_ALT_ROUNDED, on_click=lambda e: (close_dialog(info_dlg), open_sources())),
+                ft.Text("Gli avvisi sono pubblici e vengono letti dai siti ufficiali. "
+                        "Ogni avviso rimanda all'originale, che fa sempre fede. Le date segnate con ⚠ sono lette da "
+                        "un'immagine: controllale nell'avviso. Per correzioni o rimozioni usa il contatto indicato nella scheda dello store e nell'informativa privacy.",
                         size=13)]),
             actions=[ft.TextButton("Informativa sulla privacy", icon=ft.Icons.PRIVACY_TIP_OUTLINED,
                                    on_click=lambda e: open_url(PRIVACY_URL)),
@@ -4594,9 +4919,11 @@ def build(page: ft.Page, raw_prefs=None):
             bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
             content=ft.Row(spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER, controls=[
                 ft.Icon(ft.Icons.INFO_OUTLINE_ROUNDED, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
-                ft.Text("Le stime GPS sono indicative: fanno fede gli Uffici Scolastici. "
-                        "L'app non è collegata al Ministero dell'Istruzione e del Merito.",
+                ft.Text("App indipendente, non governativa: non è collegata al Ministero dell'Istruzione e del Merito "
+                        "né agli Uffici Scolastici. Fanno sempre fede gli avvisi originali.",
                         size=10.5, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                ft.TextButton(content="Fonti", icon=ft.Icons.LINK_ROUNDED, on_click=lambda e: open_sources(),
+                              style=ft.ButtonStyle(padding=ft.Padding.symmetric(horizontal=4, vertical=0))),
             ]),
         )
         page.add(home_view, gps_view, calc_view, radar_view, sources_view, menu_view, storico_view, scad_view, disclaimer)
@@ -4639,6 +4966,28 @@ def build(page: ft.Page, raw_prefs=None):
             recent = (datetime.now() - last).total_seconds() < 3600
         except ValueError:
             recent = False
+        if prefs.get("intro_ok") != "1":
+            def intro_close(e=None):
+                prefs["intro_ok"] = "1"
+                save_prefs()
+                close_dialog(intro_dlg)
+            intro_dlg = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Prima di iniziare"),
+                content=ft.Column(tight=True, spacing=8, controls=[
+                    ft.Text("Interpelli Scuola è un'app indipendente e NON rappresenta nessun ente governativo: non è "
+                            "collegata al Ministero dell'Istruzione e del Merito né agli Uffici Scolastici.", size=13,
+                            weight=ft.FontWeight.W_600),
+                    ft.Text("Gli avvisi sono letti dai siti ufficiali; ogni avviso ha il link alla fonte originale, che "
+                            "fa sempre fede. Controlla lì prima di candidarti.", size=13),
+                    ft.TextButton(content="Ministero dell'Istruzione e del Merito", icon=ft.Icons.ACCOUNT_BALANCE_ROUNDED,
+                                  url="https://www.mim.gov.it/"),
+                    ft.TextButton(content="Elenco delle fonti ufficiali", icon=ft.Icons.LIST_ALT_ROUNDED,
+                                  on_click=lambda e: (intro_close(), open_sources())),
+                ]),
+                actions=[ft.TextButton(content="Ho capito", on_click=intro_close)],
+            )
+            show_dialog(intro_dlg)
         if empty or not recent:
             prefs["last_auto"] = datetime.now().isoformat(timespec="seconds")
             save_prefs()

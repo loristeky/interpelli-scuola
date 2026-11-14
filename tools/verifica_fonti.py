@@ -58,6 +58,10 @@ def check(app, region, name, url):
     except Exception as ex:
         return {"regione": region, "nome": name, "url": url, "stato": "errore", "avvisi": 0, "dettaglio": str(ex)[:80]}
     if not ok:
+        from urllib.parse import urlparse
+        if urlparse(url).netloc.lower() in getattr(app, "ROBOTS_SKIPPED", ()):
+            return {"regione": region, "nome": name, "url": url, "stato": "vietata dal sito", "avvisi": 0,
+                    "dettaglio": "robots.txt non ammette letture automatiche: la fonte non viene letta"}
         return {"regione": region, "nome": name, "url": url, "stato": "irraggiungibile", "avvisi": 0, "dettaglio": ""}
     return {"regione": region, "nome": name, "url": url, "stato": "ok" if items else "vuota", "avvisi": len(items),
             "dettaglio": ""}
@@ -80,6 +84,8 @@ def diagnosi_digest(app, region, name, url):
     good = [x for x in links if len(x[0]) > 30 and _re.search(r"\bn\.?\s*\d+|conferimento", x[0], _re.I)
             and x[1].rstrip("/").lower() != url.rstrip("/").lower()]
     out.append(f"- Avvisi con numero: {len(good)}")
+    out.append("- Ordine di lettura (primi nella pagina, numero): " + ", ".join(
+        str(app.digest_number(x[0])) for x in good[:5]))
     if good:
         try:
             notice = app.fetch_url(good[0][1])
