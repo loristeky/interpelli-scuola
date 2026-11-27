@@ -12,8 +12,10 @@
     "https://padova.istruzioneveneto.gov.it/wp-content/uploads/2026/11/Bollettino-XIX-turno-GPS-16.11.2026.pdf",
     "https://padova.istruzioneveneto.gov.it/wp-content/uploads/2026/11/Bollettino-XX-turno-GPS-18.11.2026.pdf",
     "https://padova.istruzioneveneto.gov.it/wp-content/uploads/2026/11/Bollettino-XXI-turno-GPS-24.11.2026.pdf",
+    "https://padova.istruzioneveneto.gov.it/wp-content/uploads/2026/11/Bollettino-XXII-turno-GPS-27.11.2026-1.pdf",
     "https://padova.istruzioneveneto.gov.it/wp-content/uploads/2026/11/Decreto-approvazione-e-pubblicazione-Bollettino-XX-Turno-supplenze-18.11.2026.pdf",
     "https://padova.istruzioneveneto.gov.it/wp-content/uploads/2026/11/Decreto-approvazione-e-pubblicazione-Bollettino-XXI-Turno-supplenze-24.11.2026.pdf",
+    "https://padova.istruzioneveneto.gov.it/wp-content/uploads/2026/11/Decreto-approvazione-e-pubblicazione-Bollettino-XXII-Turno-supplenze-27.11.2026-1.pdf",
     "https://pc.istruzioneer.gov.it/2026/11/12/nomine-a-tempo-determinato-a-s-2026-2027-esito-turno-14/",
     "https://pc.istruzioneer.gov.it/2026/11/17/nomine-a-tempo-determinato-a-s-2026-2027-esito-turno-15/",
     "https://pc.istruzioneer.gov.it/2026/11/20/nomine-a-tempo-determinato-a-s-2026-2027-esito-turno-16/",
@@ -180,7 +182,7 @@
     "Cuneo": 16,
     "Rovigo": 4,
     "Lucca": 7,
-    "Padova": 5,
+    "Padova": 7,
     "Chieti_e_Pescara": 1,
     "Napoli": 4,
     "Ferrara": 15,
@@ -490,6 +492,10 @@
     "Pisa_bollettino-8.pdf": [
       "https://www.usp-pi.it/incarichi-a-tempo-determinato-undicesimo-turno-nomine-da-gps-a-s-2026-27/",
       "https://www.usp-pi.it/wp-content/uploads/2026/11/Bollettino_TotaleNomine-29.pdf"
+    ],
+    "Padova_bollettino-7.pdf": [
+      "https://padova.istruzioneveneto.gov.it/wp-content/uploads/2026/11/Bollettino-XXII-turno-GPS-27.11.2026-1.pdf",
+      "https://padova.istruzioneveneto.gov.it/wp-content/uploads/2026/11/Bollettino-XXII-turno-GPS-27.11.2026-1.pdf"
     ]
   }
 }
