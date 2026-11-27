@@ -66,20 +66,26 @@
     "https://www.istruzionechietipescara.it/2026/11/10/bollettino-n-8-nomine-a-tempo-determinato-da-gps-a-s-2026-2027/",
     "https://www.istruzionechietipescara.it/2026/11/17/bollettino-n-9-nomine-a-tempo-determinato-da-gps-a-s-2026-2027/",
     "https://www.istruzionechietipescara.it/2026/11/24/bollettino-n-10-nomine-a-tempo-determinato-da-gps-a-s-2026-2027-province-di-chieti-e-pescara/",
+    "https://www.istruzionechietipescara.it/2026/11/27/bollettino-n-11-nomine-a-tempo-determinato-da-gps-a-s-2026-2027-province-di-chieti-e-pescara/",
     "https://www.istruzionechietipescara.it/category/nomine-a-tempo-determinato/",
     "https://www.istruzionechietipescara.it/wp-content/uploads/2026/08/AVVISO-AOOUSPCH-PE-prot.-0027860-del-31-08-2026.pdf",
     "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/ALLEGATO-A-CHIETI-Bollettino-Turno-N.-10.pdf",
+    "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/ALLEGATO-A-CHIETI-Bollettino-Turno-N.-11.pdf",
     "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/ALLEGATO-A-CHIETI-Bollettino-Turno-N.-8.pdf",
     "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/ALLEGATO-A-CHIETI-Bollettino-Turno-N.-9.pdf",
     "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/ALLEGATO-B-PESCARA-Bollettino-Turno-n.-10.pdf",
+    "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/ALLEGATO-B-PESCARA-Bollettino-Turno-n.-11.pdf",
     "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/ALLEGATO-B-PESCARA-Bollettino-Turno-n.-8.pdf",
     "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/ALLEGATO-B-PESCARA-Bollettino-Turno-n.-9.pdf",
     "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/CHIETI-ReportDettDispScuola-Turno-10.pdf",
+    "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/CHIETI-ReportDettDispScuola-Turno-11.pdf",
     "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/CHIETI-ReportDettDispScuola-Turno-9.pdf",
     "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/CHIETI-ReportDettDispScuola-Turno-N.-8.pdf",
+    "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/PESCARA-ReportDettDispScuola-TURNO-N.11.pdf",
     "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/m_pi.AOOUSPCH-PE.REGISTRO-UFFICIALEU.0037007.10-11-2026.pdf",
     "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/m_pi.AOOUSPCH-PE.REGISTRO-UFFICIALEU.0037941.17-11-2026.pdf",
     "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/m_pi.AOOUSPCH-PE.REGISTRO-UFFICIALEU.0038969.24-11-2026.pdf",
+    "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/m_pi.AOOUSPCH-PE.REGISTRO-UFFICIALEU.0039573.27-11-2026.pdf",
     "https://www.istruzionematera.it/1-bollettino-nomine-a-tempo-determinato-a-s-2026-27/",
     "https://www.istruzionematera.it/wp-content/uploads/2026/09/1°-Bollettino-nomine-a-t.d.-a.s.-26_27.pdf",
     "https://www.istruzionepiemonte.it/cuneo/nomine-gps-fase-19-5/",
@@ -183,7 +189,7 @@
     "Rovigo": 4,
     "Lucca": 7,
     "Padova": 7,
-    "Chieti_e_Pescara": 1,
+    "Chieti_e_Pescara": 11,
     "Napoli": 4,
     "Ferrara": 15,
     "Agrigento": 2
@@ -496,6 +502,14 @@
     "Padova_bollettino-7.pdf": [
       "https://padova.istruzioneveneto.gov.it/wp-content/uploads/2026/11/Bollettino-XXII-turno-GPS-27.11.2026-1.pdf",
       "https://padova.istruzioneveneto.gov.it/wp-content/uploads/2026/11/Bollettino-XXII-turno-GPS-27.11.2026-1.pdf"
+    ],
+    "Chieti_e_Pescara_bollettino-11.pdf": [
+      "https://www.istruzionechietipescara.it/2026/11/27/bollettino-n-11-nomine-a-tempo-determinato-da-gps-a-s-2026-2027-province-di-chieti-e-pescara/",
+      "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/ALLEGATO-A-CHIETI-Bollettino-Turno-N.-11.pdf"
+    ],
+    "Chieti_e_Pescara_bollettino-11_2.pdf": [
+      "https://www.istruzionechietipescara.it/2026/11/27/bollettino-n-11-nomine-a-tempo-determinato-da-gps-a-s-2026-2027-province-di-chieti-e-pescara/",
+      "https://www.istruzionechietipescara.it/wp-content/uploads/2026/11/ALLEGATO-B-PESCARA-Bollettino-Turno-n.-11.pdf"
     ]
   }
 }
